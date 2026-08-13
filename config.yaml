@@ -35,6 +35,10 @@ companies:
   url: https://jobsearch.bmj.com/
   source: generic
   token: https://jobsearch.bmj.com/
+- name: Redwood Recruitment (agency)
+  url: https://redwoodrecruitment.com/vacancies
+  source: generic
+  token: https://redwoodrecruitment.com/vacancies
 rules:
   min_score: 4
   remote_only: false

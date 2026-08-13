@@ -27,6 +27,10 @@ companies:
   url: https://www.alpsp.org/careers-hub/jobs-board/
   source: generic
   token: https://www.alpsp.org/careers-hub/jobs-board/
+- name: Royal Society
+  url: https://royalsociety.occupop-careers.com/
+  source: generic
+  token: https://royalsociety.occupop-careers.com/
 rules:
   min_score: 4
   remote_only: false

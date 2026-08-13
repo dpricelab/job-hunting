@@ -43,6 +43,9 @@ rules:
   # "Editor" also names media roles that have nothing to do with publishing.
   - 're:\bvideo\b'
   - 're:\bcopy[- ]?desk\b'
+  # Below the level being aimed at.
+  - 're:\bassistants?\b'
+  - 're:\bcoordinators?\b'
 
   # Only rejects postings that state a location; ones with none still pass.
   location_include:

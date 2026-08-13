@@ -1,0 +1,12 @@
+# jobhunt local state
+data/
+out/
+config.yaml
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/

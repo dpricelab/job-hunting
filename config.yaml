@@ -32,9 +32,9 @@ companies:
   source: generic
   token: https://royalsociety.occupop-careers.com/
 - name: BMJ
-  url: https://careers-bmj.icims.com/jobs/search
+  url: https://jobsearch.bmj.com/
   source: generic
-  token: https://careers-bmj.icims.com/jobs/search
+  token: https://jobsearch.bmj.com/
 rules:
   min_score: 4
   remote_only: false

@@ -168,8 +168,14 @@ def cmd_init(args) -> int:
     return 0
 
 
+def _normalize_url(url: str) -> str:
+    """Drop the fragment: it never reaches the server, so it is noise here."""
+    return (url or "").strip().split("#", 1)[0]
+
+
 def cmd_add(args) -> int:
     config = _load_config(args)
+    args.url = _normalize_url(args.url)
 
     for existing in config.companies:
         if existing.url.rstrip("/") == args.url.rstrip("/"):
@@ -266,6 +272,73 @@ def cmd_companies(args) -> int:
         )
 
     print(_table(["COMPANY", "BOARD", "TOKEN", "MATCH", "SEEN", ""], rows, [28, 16, 24, 6, 6, 10]))
+    return 0
+
+
+def cmd_resolve(args) -> int:
+    """Re-detect the board behind a configured URL.
+
+    Useful when a company was added without network access to sniff its page,
+    and when an employer migrates to a different ATS.
+    """
+    config = _load_config(args)
+
+    if args.company:
+        match = config.find(args.company)
+        if not match:
+            print(red(f"No configured company matching {args.company!r}"))
+            return 1
+        targets = [match]
+    else:
+        targets = config.active
+        if not args.all:
+            targets = [c for c in targets if c.source in ("", "auto", "generic")]
+
+    if not targets:
+        print("Nothing to resolve — every company already has a known board.")
+        print(dim("Use --all to re-check them anyway."))
+        return 0
+
+    changed = 0
+    for company in targets:
+        before = (company.source, company.token)
+        name, token, sniffed = sources.resolve(company.url, sniff=True)
+
+        if name == "generic":
+            # `resolve` also reports generic when the page could not be
+            # fetched, so never downgrade a company that already has a working
+            # board — a network blip would otherwise wipe the whole config.
+            if before[0] in ("", "auto", "generic"):
+                print(f"  {yellow('–')} {company.name}: no board found, still generic")
+                print(
+                    dim(
+                        "     The page may render its jobs with JavaScript, or it may "
+                        "not have been reachable. Look for a 'view all jobs' link and "
+                        "add that URL instead."
+                    )
+                )
+            else:
+                print(
+                    f"  {yellow('!')} {company.name}: could not confirm its "
+                    f"{before[0]} board just now; leaving it as is"
+                )
+            continue
+
+        if (name, token) != before:
+            company.source, company.token = name, token
+            changed += 1
+            note = " (found embedded in the page)" if sniffed else ""
+            origin = before[0] or "auto"
+            print(f"  {green('✓')} {company.name}: {origin} → {bold(name)} · {token}{note}")
+        else:
+            print(f"  {dim('–')} {company.name}: unchanged ({name})")
+
+    if changed:
+        config.save()
+        print(f"\nUpdated {changed} of {len(targets)} in {config.path}.")
+        print(dim("Next: jobhunt fetch"))
+    else:
+        print(f"\nNo changes to {config.path}.")
     return 0
 
 
@@ -540,6 +613,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("companies", help="list configured companies")
     p.set_defaults(func=cmd_companies)
+
+    p = sub.add_parser("resolve", help="re-detect the board behind configured URLs")
+    p.add_argument("--company", help="resolve only this company")
+    p.add_argument("--all", action="store_true", help="re-check every company, not just generic ones")
+    p.set_defaults(func=cmd_resolve)
 
     p = sub.add_parser("fetch", help="pull the latest postings from every board")
     p.add_argument("--company", help="fetch only this company")

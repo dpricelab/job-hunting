@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from jobhunt.cli import main
+from jobhunt.config import Config
 from jobhunt.store import Store
 
 
@@ -299,6 +300,130 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn("Dead:", out)
         self.assertIn("Acme: 3 roles", out)
         self.assertEqual(code, 0)  # one board failed, the other did not
+
+
+class _CareersPageHandler(BaseHTTPRequestHandler):
+    """A company careers page that embeds someone else's job board."""
+
+    body = (
+        "<html><body><h1>Work with us</h1>"
+        '<iframe src="https://boards.greenhouse.io/embed/job_board?for=acmecorp"></iframe>'
+        "</body></html>"
+    )
+
+    def do_GET(self):
+        encoded = type(self).body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def log_message(self, *args):
+        pass
+
+
+class ResolveTests(unittest.TestCase):
+    """`resolve` re-detects boards for companies stored as generic."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), _CareersPageHandler)
+        cls.url = f"http://127.0.0.1:{cls.server.server_port}/careers"
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def setUp(self):
+        _CareersPageHandler.body = (
+            "<html><body><h1>Work with us</h1>"
+            '<iframe src="https://boards.greenhouse.io/embed/job_board?for=acmecorp"></iframe>'
+            "</body></html>"
+        )
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.config = self.base / "config.yaml"
+        self.data = self.base / "data"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_cli(self, *argv) -> tuple[int, str]:
+        buffer = io.StringIO()
+        args = ["--config", str(self.config), "--data-dir", str(self.data), *argv]
+        with redirect_stdout(buffer):
+            code = main(args)
+        return code, buffer.getvalue()
+
+    def write_config(self, source="generic"):
+        self.config.write_text(
+            f"companies:\n  - name: Acme\n    url: {self.url}\n    source: {source}\n"
+            f"rules:\n  min_score: 0\n",
+            encoding="utf-8",
+        )
+
+    def test_a_generic_company_is_upgraded_to_its_real_board(self):
+        self.write_config()
+        code, out = self.run_cli("resolve")
+        self.assertEqual(code, 0, out)
+        self.assertIn("generic → greenhouse", out.replace("\x1b[1m", "").replace("\x1b[0m", ""))
+
+        config = Config.load(self.config)
+        self.assertEqual(config.companies[0].source, "greenhouse")
+        self.assertEqual(config.companies[0].token, "acmecorp")
+
+    def test_a_page_with_no_board_is_reported_not_silently_changed(self):
+        _CareersPageHandler.body = "<html><body>No openings right now.</body></html>"
+        self.write_config()
+        code, out = self.run_cli("resolve")
+        self.assertEqual(code, 0)
+        self.assertIn("still generic", out)
+        self.assertEqual(Config.load(self.config).companies[0].source, "generic")
+
+    def test_companies_with_a_known_board_are_skipped_by_default(self):
+        self.write_config(source="lever")
+        code, out = self.run_cli("resolve")
+        self.assertEqual(code, 0)
+        self.assertIn("Nothing to resolve", out)
+
+    def test_all_rechecks_even_known_boards(self):
+        self.write_config(source="lever")
+        code, out = self.run_cli("resolve", "--all")
+        self.assertEqual(code, 0)
+        self.assertIn("Acme", out)
+
+    def test_an_unreachable_page_never_downgrades_a_working_board(self):
+        # resolve() also returns generic when the page cannot be fetched, so a
+        # blip must not overwrite a company that already has a real board.
+        self.config.write_text(
+            "companies:\n  - name: Acme\n    url: http://127.0.0.1:9/careers\n"
+            "    source: greenhouse\n    token: acmecorp\n"
+            "rules:\n  min_score: 0\n",
+            encoding="utf-8",
+        )
+        code, out = self.run_cli("resolve", "--all")
+        self.assertEqual(code, 0)
+        self.assertIn("could not confirm", out)
+
+        config = Config.load(self.config)
+        self.assertEqual(config.companies[0].source, "greenhouse")
+        self.assertEqual(config.companies[0].token, "acmecorp")
+
+    def test_an_unknown_company_name_is_an_error(self):
+        self.write_config()
+        code, out = self.run_cli("resolve", "--company", "Globex")
+        self.assertEqual(code, 1)
+        self.assertIn("No configured company", out)
+
+    def test_add_strips_a_url_fragment(self):
+        self.config.write_text("companies: []\nrules: {}\n", encoding="utf-8")
+        code, out = self.run_cli("add", f"{self.url}#jobs", "--no-check")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(Config.load(self.config).companies[0].url, self.url)
 
 
 if __name__ == "__main__":

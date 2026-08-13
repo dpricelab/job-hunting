@@ -7,6 +7,10 @@ companies:
   url: https://springernature.wd3.myworkdayjobs.com/SpringerNatureCareers
   source: workday
   token: springernature.wd3.myworkdayjobs.com/springernature/SpringerNatureCareers
+- name: Sage
+  url: https://careers.sagepub.com/jobs
+  source: generic
+  token: https://careers.sagepub.com/jobs
 rules:
   min_score: 3
   remote_only: false

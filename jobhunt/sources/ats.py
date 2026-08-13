@@ -37,31 +37,45 @@ def _clean_token(token: str | None) -> str | None:
 
 GREENHOUSE_SKIP = {"embed", "job_board", "jobs", "job"}
 
+# Greenhouse runs a separate EU instance. Tokens are namespaced per region, so
+# an "eu:" prefix records which one a URL named and the right API is tried
+# first — the other is still tried as a fallback.
+GREENHOUSE_EU_PREFIX = "eu:"
+GREENHOUSE_US_API = "https://boards-api.greenhouse.io/v1/boards"
+GREENHOUSE_EU_API = "https://boards-api.eu.greenhouse.io/v1/boards"
+
 
 def detect_greenhouse(url: str) -> str | None:
     parsed, host, segments = _parse(url)
     if "greenhouse.io" not in host:
         return None
 
+    prefix = GREENHOUSE_EU_PREFIX if ".eu.greenhouse.io" in host else ""
+
     embedded = parse_qs(parsed.query).get("for")
     if embedded:
-        return _clean_token(embedded[0])
+        token = _clean_token(embedded[0])
+        return prefix + token if token else None
 
     for segment in segments:
         if segment not in GREENHOUSE_SKIP:
-            return _clean_token(segment)
+            token = _clean_token(segment)
+            return prefix + token if token else None
 
     label = host.split(".")[0]
     if label not in ("boards", "job-boards", "www", "api", "boards-api"):
-        return _clean_token(label)
+        token = _clean_token(label)
+        return prefix + token if token else None
     return None
 
 
 def fetch_greenhouse(token: str, company: str) -> list[Job]:
-    bases = (
-        "https://boards-api.greenhouse.io/v1/boards",
-        "https://boards-api.eu.greenhouse.io/v1/boards",
-    )
+    if token.startswith(GREENHOUSE_EU_PREFIX):
+        token = token[len(GREENHOUSE_EU_PREFIX) :]
+        bases = (GREENHOUSE_EU_API, GREENHOUSE_US_API)
+    else:
+        bases = (GREENHOUSE_US_API, GREENHOUSE_EU_API)
+
     payload = None
     last_error: Exception | None = None
     for base in bases:

@@ -2,6 +2,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from jobhunt import sources
+from jobhunt.http import HttpError
 from jobhunt.sources import ats, feeds, generic
 
 
@@ -11,14 +12,76 @@ class DetectionTests(unittest.TestCase):
             "https://boards.greenhouse.io/acme",
             "https://boards.greenhouse.io/acme/jobs/123",
             "https://job-boards.greenhouse.io/acme",
-            "https://boards.eu.greenhouse.io/acme",
         ):
             with self.subTest(url=url):
                 self.assertEqual(ats.detect_greenhouse(url), "acme")
 
+    def test_greenhouse_eu_boards_are_marked(self):
+        for url in (
+            "https://boards.eu.greenhouse.io/acme",
+            "https://job-boards.eu.greenhouse.io/acme",
+            "https://job-boards.eu.greenhouse.io/acme/jobs/123",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(ats.detect_greenhouse(url), "eu:acme")
+
     def test_greenhouse_embed_url_uses_the_for_parameter(self):
         url = "https://boards.greenhouse.io/embed/job_board?for=acme"
         self.assertEqual(ats.detect_greenhouse(url), "acme")
+
+
+class GreenhouseRegionTests(unittest.TestCase):
+    """EU and US Greenhouse tokens live in separate namespaces."""
+
+    def capture_bases(self, token: str) -> list[str]:
+        tried: list[str] = []
+
+        def fake_get_json(url, params=None, **kwargs):
+            tried.append(url)
+            if "eu.greenhouse.io" in url and "found" not in url:
+                pass
+            return {"jobs": []}
+
+        original = ats.get_json
+        ats.get_json = fake_get_json
+        try:
+            ats.fetch_greenhouse(token, "Acme")
+        finally:
+            ats.get_json = original
+        return tried
+
+    def test_eu_tokens_hit_the_eu_api_first(self):
+        tried = self.capture_bases("eu:acme")
+        self.assertIn("boards-api.eu.greenhouse.io", tried[0])
+        self.assertIn("/acme/jobs", tried[0])
+
+    def test_plain_tokens_hit_the_us_api_first(self):
+        tried = self.capture_bases("acme")
+        self.assertIn("boards-api.greenhouse.io", tried[0])
+        self.assertNotIn("eu.greenhouse.io", tried[0])
+
+    def test_the_prefix_is_stripped_from_the_request_path(self):
+        tried = self.capture_bases("eu:acme")
+        self.assertNotIn("eu:", tried[0])
+
+    def test_the_other_region_is_still_tried_as_a_fallback(self):
+        calls: list[str] = []
+
+        def fake_get_json(url, params=None, **kwargs):
+            calls.append(url)
+            if "boards-api.eu" in url:
+                raise HttpError("HTTP 404")
+            return {"jobs": [{"id": 1, "title": "Engineer", "absolute_url": "https://x"}]}
+
+        original = ats.get_json
+        ats.get_json = fake_get_json
+        try:
+            jobs = ats.fetch_greenhouse("eu:acme", "Acme")
+        finally:
+            ats.get_json = original
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(jobs), 1)
 
     def test_lever_and_ashby(self):
         self.assertEqual(ats.detect_lever("https://jobs.lever.co/acme"), "acme")

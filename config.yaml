@@ -15,6 +15,10 @@ companies:
   url: https://careers.smartrecruiters.com/InformaGroupPlc/taylor-and-francis
   source: smartrecruiters
   token: InformaGroupPlc
+- name: PLOS
+  url: https://job-boards.eu.greenhouse.io/plos
+  source: greenhouse
+  token: eu:plos
 rules:
   min_score: 3
   remote_only: false

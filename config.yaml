@@ -1,0 +1,30 @@
+companies:
+- name: Elsevier
+  url: https://relx.wd3.myworkdayjobs.com/ElsevierJobs
+  source: workday
+  token: relx.wd3.myworkdayjobs.com/relx/ElsevierJobs
+- name: Springer Nature
+  url: https://springernature.wd3.myworkdayjobs.com/SpringerNatureCareers
+  source: workday
+  token: springernature.wd3.myworkdayjobs.com/springernature/SpringerNatureCareers
+rules:
+  min_score: 3
+  remote_only: false
+  max_age_days: 0
+  title_include: []
+  title_exclude:
+  - intern
+  - internship
+  - graduate
+  - vice president
+  location_include: []
+  location_exclude: []
+  exclude_keywords: []
+  keywords:
+    python: 3
+    typescript: 2
+    kubernetes: 2
+    aws: 1
+    machine learning: 3
+    postgres: 1
+  title_bonus: 2

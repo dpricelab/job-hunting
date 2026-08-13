@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
@@ -227,10 +228,16 @@ def cmd_add(args) -> int:
 
 
 def _suggest_name(url: str, token: str) -> str:
-    from .config import _name_from_url
+    """Best guess at a display name.
 
-    if token and not token.startswith("http"):
-        return token.replace("-", " ").replace("_", " ").title()
+    A token is only a usable name when it is a bare slug — Workday tokens are
+    host/tenant/site triples and RSS tokens are whole URLs, both of which make
+    nonsense names. Those fall back to reading the URL.
+    """
+    from .config import _name_from_url, _prettify
+
+    if token and not re.search(r"[/.:]", token):
+        return _prettify(token) or token.title()
     return _name_from_url(url)
 
 

@@ -48,6 +48,59 @@ class UtilTests(unittest.TestCase):
         self.assertEqual(truncate("short", 20), "short")
 
 
+class NameInferenceTests(unittest.TestCase):
+    """Display names are guessed from the URL when --name is not given."""
+
+    def suggest(self, url: str) -> str:
+        from jobhunt import sources
+        from jobhunt.cli import _suggest_name
+
+        _, token = sources.detect(url)
+        return _suggest_name(url, token)
+
+    def test_workday_uses_the_site_not_the_tenant(self):
+        # The tenant is often a parent company: RELX hosts Elsevier's board.
+        self.assertEqual(
+            self.suggest("https://relx.wd3.myworkdayjobs.com/ElsevierJobs"), "Elsevier"
+        )
+
+    def test_workday_site_names_are_split_on_camel_case(self):
+        self.assertEqual(
+            self.suggest(
+                "https://springernature.wd3.myworkdayjobs.com/SpringerNatureCareers"
+            ),
+            "Springer Nature",
+        )
+
+    def test_a_locale_segment_is_skipped(self):
+        self.assertEqual(
+            self.suggest("https://relx.wd3.myworkdayjobs.com/en-US/ElsevierJobs"), "Elsevier"
+        )
+
+    def test_workday_tokens_are_never_used_verbatim_as_names(self):
+        # The token is a host/tenant/site triple; using it raw produced
+        # "Relx.Wd3.Myworkdayjobs.Com/Relx/Elsevierjobs".
+        name = self.suggest("https://relx.wd3.myworkdayjobs.com/ElsevierJobs")
+        self.assertNotIn("/", name)
+        self.assertNotIn(".", name)
+
+    def test_other_boards_still_read_well(self):
+        self.assertEqual(self.suggest("https://boards.greenhouse.io/acme-corp"), "Acme Corp")
+        self.assertEqual(self.suggest("https://jobs.lever.co/acme"), "Acme")
+        self.assertEqual(self.suggest("https://acme.recruitee.com/"), "Acme")
+        self.assertEqual(
+            self.suggest("https://www.northwind-data.com/careers"), "Northwind Data"
+        )
+
+    def test_rss_tokens_are_whole_urls_and_fall_back_to_the_host(self):
+        self.assertEqual(self.suggest("https://example.com/jobs.rss"), "Example")
+
+    def test_an_uninformative_site_name_falls_back_to_the_host(self):
+        self.assertEqual(
+            self.suggest("https://acme.wd1.myworkdayjobs.com/ExternalCareers"), "Acme"
+        )
+
+
 class ConfigTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

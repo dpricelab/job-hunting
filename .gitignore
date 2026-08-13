@@ -1,7 +1,9 @@
 # jobhunt local state
+# config.yaml is tracked on purpose: it is just company URLs and keyword
+# rules, and keeping it in git is how the watch list follows you between
+# machines. Collected postings and generated pages stay out.
 data/
 out/
-config.yaml
 
 # python
 __pycache__/

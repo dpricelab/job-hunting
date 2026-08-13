@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -158,7 +159,24 @@ _PATH_KEYED_HOSTS = (
     "ashbyhq.com",
     "smartrecruiters.com",
     "workable.com",
+    # Workday hosts are keyed on the tenant, which is often a parent company
+    # (relx.wd3.myworkdayjobs.com/ElsevierJobs). The site names the employer.
+    "myworkdayjobs.com",
 )
+
+# Board sites are usually named "<Company>Jobs" or "<Company>Careers".
+_TRAILING_GENERIC = {
+    "jobs",
+    "job",
+    "careers",
+    "career",
+    "site",
+    "external",
+    "externals",
+    "hiring",
+    "openings",
+    "vacancies",
+}
 _GENERIC_LABELS = {
     "boards",
     "job-boards",
@@ -186,20 +204,39 @@ def _name_from_url(url: str) -> str:
     host = (parsed.netloc or "").split(":")[0].lower()
     path_parts = [p for p in parsed.path.split("/") if p]
 
-    def prettify(value: str) -> str:
-        return value.replace("-", " ").replace("_", " ").strip().title()
-
     if any(known in host for known in _PATH_KEYED_HOSTS):
         embedded = parse_qs(parsed.query).get("for")
         if embedded:
-            return prettify(embedded[0])
+            return _prettify(embedded[0])
         for segment in path_parts:
-            if segment.lower() not in _GENERIC_LABELS:
-                return prettify(segment)
+            if segment.lower() in _GENERIC_LABELS or _LOCALE_RE.match(segment):
+                continue
+            name = _prettify(segment)
+            if name:
+                return name
+            break  # the site name said nothing useful; try the host instead
 
     host_labels = [p for p in host.split(".") if p.lower() not in _GENERIC_LABELS]
     if host_labels:
-        return prettify(host_labels[0])
+        return _prettify(host_labels[0]) or host_labels[0].title()
     if path_parts:
-        return prettify(path_parts[0])
+        return _prettify(path_parts[0]) or path_parts[0].title()
     return host or url
+
+
+_LOCALE_RE = re.compile(r"^[a-z]{2}(-[A-Za-z]{2})?$")
+_CAMEL_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def _prettify(value: str) -> str:
+    """Turn a board slug into a display name.
+
+    Splits camel case and drops a trailing "Jobs"/"Careers", so ElsevierJobs
+    reads as "Elsevier" and SpringerNatureCareers as "Springer Nature".
+    Returns "" when nothing meaningful survives.
+    """
+    spaced = _CAMEL_BOUNDARY_RE.sub(" ", (value or "").replace("-", " ").replace("_", " "))
+    words = spaced.split()
+    while words and words[-1].lower() in _TRAILING_GENERIC:
+        words.pop()
+    return " ".join(words).title()

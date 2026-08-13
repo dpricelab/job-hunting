@@ -246,6 +246,23 @@ class Store:
         ).fetchone()
         return {k: (row[k] or 0) for k in row.keys()}
 
+    def departments(self, company: str | None = None) -> list[sqlite3.Row]:
+        """Distinct departments seen, for narrowing a broad board down."""
+        sql = """
+            SELECT COALESCE(NULLIF(department, ''), '(none)') AS department,
+                   company,
+                   COUNT(*) AS total,
+                   SUM(rejected IS NULL) AS matching
+            FROM jobs
+            WHERE closed_at IS NULL
+        """
+        params: list = []
+        if company:
+            sql += " AND company LIKE ?"
+            params.append(f"%{company}%")
+        sql += " GROUP BY department, company ORDER BY total DESC, department"
+        return self.conn.execute(sql, params).fetchall()
+
     def companies(self) -> list[sqlite3.Row]:
         return self.conn.execute(
             """

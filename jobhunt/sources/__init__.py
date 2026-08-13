@@ -13,8 +13,9 @@ from . import ats, feeds, generic
 class SourceDef:
     name: str
     detect: Callable[[str], str | None]
-    fetch: Callable[[str, str], list[Job]]
+    fetch: Callable[..., list[Job]]
     confident: bool = True  # False means "best effort, may return junk"
+    accepts_params: bool = False  # supports server-side filtering
 
 
 # Order matters: specific vendors first, the catch-all last.
@@ -22,7 +23,12 @@ REGISTRY: tuple[SourceDef, ...] = (
     SourceDef("greenhouse", ats.detect_greenhouse, ats.fetch_greenhouse),
     SourceDef("lever", ats.detect_lever, ats.fetch_lever),
     SourceDef("ashby", ats.detect_ashby, ats.fetch_ashby),
-    SourceDef("smartrecruiters", ats.detect_smartrecruiters, ats.fetch_smartrecruiters),
+    SourceDef(
+        "smartrecruiters",
+        ats.detect_smartrecruiters,
+        ats.fetch_smartrecruiters,
+        accepts_params=True,
+    ),
     SourceDef("recruitee", ats.detect_recruitee, ats.fetch_recruitee),
     SourceDef("workable", ats.detect_workable, ats.fetch_workable),
     SourceDef("workday", ats.detect_workday, ats.fetch_workday),
@@ -95,4 +101,7 @@ def fetch_company(company: Company) -> list[Job]:
         source = get(name)
         token = source.detect(company.url) or company.url
 
-    return get(name).fetch(token, company.name)
+    source = get(name)
+    if source.accepts_params and company.params:
+        return source.fetch(token, company.name, params=company.params)
+    return source.fetch(token, company.name)

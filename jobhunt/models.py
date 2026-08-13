@@ -63,11 +63,16 @@ class Company:
     source: str = "auto"
     token: str = ""
     enabled: bool = True
+    # Extra query parameters for boards that support server-side filtering.
+    # Useful when one token covers a whole group and you want one division.
+    params: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         data = {"name": self.name, "url": self.url, "source": self.source}
         if self.token:
             data["token"] = self.token
+        if self.params:
+            data["params"] = dict(self.params)
         if not self.enabled:
             data["enabled"] = False
         return data
@@ -80,6 +85,7 @@ class Company:
             source=data.get("source") or "auto",
             token=data.get("token") or "",
             enabled=bool(data.get("enabled", True)),
+            params=dict(data.get("params") or {}),
         )
 
 

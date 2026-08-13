@@ -11,6 +11,10 @@ companies:
   url: https://careers.sagepub.com/jobs
   source: generic
   token: https://careers.sagepub.com/jobs
+- name: Taylor & Francis (Informa)
+  url: https://careers.smartrecruiters.com/InformaGroupPlc/taylor-and-francis?search=manager
+  source: smartrecruiters
+  token: InformaGroupPlc
 rules:
   min_score: 3
   remote_only: false

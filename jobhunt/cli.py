@@ -560,6 +560,30 @@ def cmd_rescore(args) -> int:
     return 0
 
 
+def cmd_departments(args) -> int:
+    """List the departments seen, so a broad board can be narrowed."""
+    with _store(args) as store:
+        rows = store.departments(args.company)
+
+    if not rows:
+        print("Nothing collected yet. Run `jobhunt fetch` first.")
+        return 0
+
+    table_rows = [
+        [row["department"], row["company"], str(row["total"]), str(row["matching"] or 0)]
+        for row in rows
+    ]
+    print(_table(["DEPARTMENT", "COMPANY", "SEEN", "MATCH"], table_rows, [40, 24, 6, 6]))
+    print(
+        dim(
+            "\nOn SmartRecruiters you can filter server-side by adding to that "
+            "company in config.yaml:\n"
+            "    params:\n      department: <name from above>"
+        )
+    )
+    return 0
+
+
 def cmd_stats(args) -> int:
     with _store(args) as store:
         counts = store.counts()
@@ -657,6 +681,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("rescore", help="re-apply rules to stored roles without refetching")
     p.set_defaults(func=cmd_rescore)
+
+    p = sub.add_parser("departments", help="list departments seen, to narrow a broad board")
+    p.add_argument("--company")
+    p.set_defaults(func=cmd_departments)
 
     p = sub.add_parser("stats", help="summarise the pipeline")
     p.set_defaults(func=cmd_stats)

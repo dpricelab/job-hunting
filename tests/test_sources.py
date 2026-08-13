@@ -51,6 +51,70 @@ class DetectionTests(unittest.TestCase):
         self.assertIsNone(feeds.detect_feed("https://example.com/careers"))
 
 
+class SmartRecruitersParamTests(unittest.TestCase):
+    """One token can cover a whole group, so server-side filters matter."""
+
+    def test_sub_site_urls_still_resolve_to_the_company_token(self):
+        self.assertEqual(
+            ats.detect_smartrecruiters(
+                "https://careers.smartrecruiters.com/InformaGroupPlc/taylor-and-francis?search=manager"
+            ),
+            "InformaGroupPlc",
+        )
+
+    def test_configured_params_reach_the_request(self):
+        seen = {}
+
+        def fake_get_json(url, params=None, **kwargs):
+            seen["url"] = url
+            seen["params"] = params
+            return {"totalFound": 0, "content": []}
+
+        original = ats.get_json
+        ats.get_json = fake_get_json
+        try:
+            ats.fetch_smartrecruiters(
+                "InformaGroupPlc", "Taylor & Francis", params={"department": "Taylor & Francis"}
+            )
+        finally:
+            ats.get_json = original
+
+        self.assertEqual(seen["params"]["department"], "Taylor & Francis")
+        self.assertEqual(seen["params"]["offset"], 0)
+        self.assertEqual(seen["params"]["limit"], 100)
+
+    def test_pagination_is_not_overridden_by_params(self):
+        seen = []
+
+        def fake_get_json(url, params=None, **kwargs):
+            seen.append(dict(params or {}))
+            return {"totalFound": 0, "content": []}
+
+        original = ats.get_json
+        ats.get_json = fake_get_json
+        try:
+            ats.fetch_smartrecruiters(
+                "Acme", "Acme", params={"limit": 5, "offset": 999, "q": "manager"}
+            )
+        finally:
+            ats.get_json = original
+
+        self.assertEqual(seen[0]["limit"], 100)
+        self.assertEqual(seen[0]["offset"], 0)
+        self.assertEqual(seen[0]["q"], "manager")
+
+    def test_params_are_optional(self):
+        def fake_get_json(url, params=None, **kwargs):
+            return {"totalFound": 0, "content": []}
+
+        original = ats.get_json
+        ats.get_json = fake_get_json
+        try:
+            self.assertEqual(ats.fetch_smartrecruiters("Acme", "Acme"), [])
+        finally:
+            ats.get_json = original
+
+
 class SniffTests(unittest.TestCase):
     def test_finds_a_greenhouse_iframe(self):
         html = """

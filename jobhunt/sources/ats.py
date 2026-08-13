@@ -179,15 +179,23 @@ def detect_smartrecruiters(url: str) -> str | None:
     return _clean_token(segments[0]) if segments else None
 
 
-def fetch_smartrecruiters(token: str, company: str) -> list[Job]:
+def fetch_smartrecruiters(token: str, company: str, params: dict | None = None) -> list[Job]:
+    """Read a SmartRecruiters board.
+
+    `params` passes through the API's own filters — `department`, `q`, `city`,
+    `country`, `custom_field.<id>` — which matters when one token covers a
+    whole group and you only want one division of it.
+    """
     jobs = []
     offset = 0
     page_size = 100
 
     while True:
+        query = {str(k): v for k, v in (params or {}).items()}
+        query.update({"limit": page_size, "offset": offset})
         payload = get_json(
             f"https://api.smartrecruiters.com/v1/companies/{token}/postings",
-            params={"limit": page_size, "offset": offset},
+            params=query,
         )
         batch = payload.get("content") or []
         for entry in batch:

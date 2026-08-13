@@ -68,6 +68,11 @@ class Config:
                 entry = {"url": entry}
             if not isinstance(entry, dict):
                 raise ConfigError(f"bad company entry: {entry!r}")
+            if entry.get("params") is not None and not isinstance(entry["params"], dict):
+                raise ConfigError(
+                    f"'params' for {entry.get('name') or entry.get('url')!r} "
+                    "must be a mapping of query parameter -> value"
+                )
             company = Company.from_dict(entry)
             if not company.url:
                 raise ConfigError(f"company entry is missing a url: {entry!r}")

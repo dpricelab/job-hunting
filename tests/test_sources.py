@@ -317,6 +317,21 @@ class AnchorFallbackTests(unittest.TestCase):
         jobs = generic._from_anchors(self.PAGE, "https://example.com/careers", "Acme")
         self.assertFalse(any("twitter" in job.url for job in jobs))
 
+    def test_aggregator_board_furniture_is_not_mistaken_for_a_job(self):
+        # An industry jobs board sits its own admin links among the listings.
+        page = """
+        <html><body>
+          <a href="/careers-hub/jobs-board/submit-a-job/">Submit a job</a>
+          <a href="/careers-hub/jobs-board/advertising/">Advertise</a>
+          <a href="/careers-hub/jobs-board/">Jobs board</a>
+          <a href="/careers-hub/jobs-board/publisher-3">Publisher</a>
+          <a href="/careers-hub/jobs-board/editorial-registrar-1">Editorial Registrar</a>
+        </body></html>
+        """
+        jobs = generic._from_anchors(page, "https://www.alpsp.org/careers-hub/", "ALPSP")
+        titles = sorted(job.title for job in jobs)
+        self.assertEqual(titles, ["Editorial Registrar", "Publisher"])
+
 
 if __name__ == "__main__":
     unittest.main()

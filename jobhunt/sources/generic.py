@@ -24,7 +24,10 @@ JOB_URL_HINT = re.compile(r"(job|career|position|opening|vacanc|posting|role)", 
 NAV_TEXT = re.compile(
     r"^(all|view all|see all|apply|apply now|learn more|read more|back|next|previous|"
     r"home|about|contact|search|filter|sort|login|sign in|menu|careers?|jobs?|"
-    r"openings?|open roles|vacancies|join us|work with us|see openings)$",
+    r"openings?|open roles|vacancies|join us|work with us|see openings|"
+    # Aggregator boards put these alongside the listings themselves.
+    r"submit a job|post a job|advertise|advertise a job|advertise with us|"
+    r"jobs board|job board|careers hub)$",
     re.I,
 )
 LDJSON_RE = re.compile(

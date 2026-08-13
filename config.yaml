@@ -23,6 +23,10 @@ companies:
   url: https://wiley.wd1.myworkdayjobs.com/wiley_careers
   source: workday
   token: wiley.wd1.myworkdayjobs.com/wiley/wiley_careers
+- name: ALPSP (industry board)
+  url: https://www.alpsp.org/careers-hub/jobs-board/
+  source: generic
+  token: https://www.alpsp.org/careers-hub/jobs-board/
 rules:
   min_score: 4
   remote_only: false

@@ -19,11 +19,17 @@ from jobhunt.sources import ats
 TENANT = "springernature"
 SITE = "SpringerNatureCareers"
 
+def _locations_text(i: int) -> str:
+    if i == 44:
+        return "3 Locations"  # Workday summarises instead of naming a place
+    return "London, United Kingdom" if i % 2 else "Remote, United Kingdom"
+
+
 POSTINGS = [
     {
         "title": f"Role {i}",
         "externalPath": f"/job/London/Role-{i}_JR{1000 + i}",
-        "locationsText": "London, United Kingdom" if i % 2 else "Remote, United Kingdom",
+        "locationsText": _locations_text(i),
         "postedOn": "Posted 5 Days Ago",
         "bulletFields": [f"JR{1000 + i}"],
     }
@@ -80,6 +86,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "jobPostingInfo": {
                     "jobDescription": description,
                     "startDate": "2026-08-01",
+                    "location": "Manchester, United Kingdom",
                     "remoteType": "Remote" if "Remote" in external_path else "",
                 }
             }
@@ -96,21 +103,21 @@ class WorkdayDetectionTests(unittest.TestCase):
             "springernature.wd3.myworkdayjobs.com/springernature/SpringerNatureCareers",
         )
 
-    def test_url_with_a_locale_segment(self):
+    def test_url_with_a_locale_segment_keeps_the_locale(self):
         self.assertEqual(
             ats.detect_workday(
                 "https://springernature.wd3.myworkdayjobs.com/en-US/SpringerNatureCareers"
             ),
-            "springernature.wd3.myworkdayjobs.com/springernature/SpringerNatureCareers",
+            "springernature.wd3.myworkdayjobs.com/springernature/SpringerNatureCareers/en-US",
         )
 
     def test_deep_link_to_a_single_posting(self):
         self.assertEqual(
             ats.detect_workday(
-                "https://springernature.wd3.myworkdayjobs.com/en-US/"
-                "SpringerNatureCareers/job/London/Editor_JR1234"
+                "https://springernature.wd3.myworkdayjobs.com/de-DE/"
+                "SpringerNatureCareers/job/Berlin/Editor_JR1234"
             ),
-            "springernature.wd3.myworkdayjobs.com/springernature/SpringerNatureCareers",
+            "springernature.wd3.myworkdayjobs.com/springernature/SpringerNatureCareers/de-DE",
         )
 
     def test_api_url_names_tenant_and_site_explicitly(self):
@@ -148,6 +155,71 @@ class WorkdayDetectionTests(unittest.TestCase):
             ats.sniff_embedded_board(html),
             ("workday", "springernature.wd3.myworkdayjobs.com/springernature/SpringerNatureCareers"),
         )
+
+
+class WorkdayIdentityTests(unittest.TestCase):
+    """bulletFields is not uniform across tenants.
+
+    Most put the requisition id there, but some put a location string and some
+    omit it. Trusting it blindly would give every job in one city the same
+    identity, silently collapsing them into a single stored record.
+    """
+
+    def build(self, entry: dict):
+        return ats._workday_job(entry, "acme.wd1.myworkdayjobs.com", "Careers", "en-US", "Acme")
+
+    def test_requisition_shaped_values_are_used(self):
+        for value in ("JR1234", "R-12345", "REQ_123", "123456"):
+            with self.subTest(value=value):
+                job = self.build(
+                    {"title": "Engineer", "externalPath": "/job/X/Engineer", "bulletFields": [value]}
+                )
+                self.assertEqual(job.external_id, value)
+
+    def test_location_shaped_values_fall_back_to_the_path(self):
+        for value in ("London, United Kingdom", "2 Locations", "Remote", "New York"):
+            with self.subTest(value=value):
+                job = self.build(
+                    {
+                        "title": "Engineer",
+                        "externalPath": "/job/London/Engineer_1",
+                        "bulletFields": [value],
+                    }
+                )
+                self.assertEqual(job.external_id, "/job/London/Engineer_1")
+
+    def test_missing_bullet_fields_fall_back_to_the_path(self):
+        job = self.build({"title": "Engineer", "externalPath": "/job/London/Engineer_1"})
+        self.assertEqual(job.external_id, "/job/London/Engineer_1")
+
+    def test_jobs_sharing_a_location_bullet_stay_distinct(self):
+        entries = [
+            {
+                "title": f"Engineer {i}",
+                "externalPath": f"/job/London/Engineer-{i}",
+                "bulletFields": ["London, United Kingdom"],
+                "locationsText": "London, United Kingdom",
+            }
+            for i in range(3)
+        ]
+        uids = {self.build(entry).uid for entry in entries}
+        self.assertEqual(len(uids), 3)
+
+    def test_vague_location_text_is_dropped_pending_the_detail_call(self):
+        job = self.build(
+            {"title": "Engineer", "externalPath": "/job/X/E", "locationsText": "2 Locations"}
+        )
+        self.assertEqual(job.location, "")
+
+    def test_a_real_location_is_kept(self):
+        job = self.build(
+            {
+                "title": "Engineer",
+                "externalPath": "/job/X/E",
+                "locationsText": "London, United Kingdom",
+            }
+        )
+        self.assertEqual(job.location, "London, United Kingdom")
 
 
 class WorkdayDateTests(unittest.TestCase):
@@ -205,7 +277,13 @@ class WorkdayFetchTests(unittest.TestCase):
         self.assertEqual(job.external_id, "JR1001")
         self.assertEqual(job.location, "London, United Kingdom")
         self.assertEqual(
-            job.url, f"http://{self.host}/{SITE}/job/London/Role-1_JR1001"
+            job.url, f"http://{self.host}/en-US/{SITE}/job/London/Role-1_JR1001"
+        )
+
+    def test_job_urls_use_the_locale_from_the_configured_url(self):
+        job = ats.fetch_workday(f"{self.token}/de-DE", "Springer Nature")[1]
+        self.assertEqual(
+            job.url, f"http://{self.host}/de-DE/{SITE}/job/London/Role-1_JR1001"
         )
 
     def test_descriptions_are_fetched_and_flattened(self):
@@ -217,6 +295,12 @@ class WorkdayFetchTests(unittest.TestCase):
         jobs = {job.title: job for job in ats.fetch_workday(self.token, "Springer Nature")}
         self.assertTrue(jobs["Role 0"].remote)  # "Remote, United Kingdom"
         self.assertFalse(jobs["Role 1"].remote)
+
+    def test_detail_supplies_a_location_when_the_listing_is_vague(self):
+        jobs = {job.title: job for job in ats.fetch_workday(self.token, "Springer Nature")}
+        self.assertEqual(jobs["Role 44"].location, "Manchester, United Kingdom")
+        # A location the listing did name is left alone.
+        self.assertEqual(jobs["Role 1"].location, "London, United Kingdom")
 
     def test_detail_start_date_overrides_the_relative_wording(self):
         job = ats.fetch_workday(self.token, "Springer Nature")[0]

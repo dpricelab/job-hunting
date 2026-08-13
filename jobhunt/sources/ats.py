@@ -371,12 +371,26 @@ WORKDAY_MAX_DETAILS = 400
 
 _POSTED_AGO_RE = re.compile(r"(\d+)\+?\s*(hour|day|week|month)s?\s+ago", re.I)
 
+# bulletFields[0] is usually the requisition id, but not every tenant plays
+# along: some put a location string there and some omit the field entirely.
+# Only values shaped like a requisition id are trusted as an identity.
+_REQ_ID_RE = re.compile(r"^[A-Za-z]{0,6}[-_ ]?\d{3,}$")
+
+# Listings sometimes summarise rather than name a place ("2 Locations"), in
+# which case the per-posting detail carries the real one.
+_VAGUE_LOCATION_RE = re.compile(r"^\d+\s+locations?$", re.I)
+
+WORKDAY_DEFAULT_LOCALE = "en-US"
+
 # Real boards are always HTTPS; tests point this at a local HTTP mock.
 WORKDAY_SCHEME = "https"
 
 
 def detect_workday(url: str) -> str | None:
-    """Return "host/tenant/site", which is everything the CXS API needs."""
+    """Return "host/tenant/site" (plus "/locale" when the URL named one).
+
+    That is everything the CXS API and the public job URLs need.
+    """
     parsed, host, segments = _parse(url)
     match = WORKDAY_HOST_RE.match(host)
     if not match:
@@ -391,21 +405,26 @@ def detect_workday(url: str) -> str | None:
         if len(segments) > index + 2:
             return f"{host}/{segments[index + 1]}/{segments[index + 2]}"
 
-    # Otherwise the site is the first non-locale path segment.
+    # Otherwise the site is the first non-locale path segment, and a locale
+    # segment ahead of it is worth keeping for building job URLs later.
+    locale = ""
     for segment in segments:
         if LOCALE_RE.match(segment):
+            locale = locale or segment
             continue
-        return f"{host}/{tenant}/{segment}"
+        return f"{host}/{tenant}/{segment}" + (f"/{locale}" if locale else "")
     return None
 
 
 def fetch_workday(token: str, company: str) -> list[Job]:
-    try:
-        host, tenant, site = token.split("/", 2)
-    except ValueError:
+    parts = token.split("/")
+    if len(parts) < 3 or not all(parts[:3]):
         raise HttpError(
-            f"malformed workday token {token!r}; expected 'host/tenant/site'"
-        ) from None
+            f"malformed workday token {token!r}; expected 'host/tenant/site[/locale]'"
+        )
+
+    host, tenant, site = parts[0], parts[1], parts[2]
+    locale = parts[3] if len(parts) > 3 and parts[3] else WORKDAY_DEFAULT_LOCALE
 
     base = f"{WORKDAY_SCHEME}://{host}/wday/cxs/{tenant}/{site}"
     postings: list[dict] = []
@@ -430,26 +449,45 @@ def fetch_workday(token: str, company: str) -> list[Job]:
         if offset >= (payload.get("total") or 0):
             break
 
-    jobs = [_workday_job(entry, host, site, company) for entry in postings]
-    jobs = [job for job in jobs if job.title]
-    _attach_workday_descriptions(jobs, base, postings)
+    pairs = [(entry, _workday_job(entry, host, site, locale, company)) for entry in postings]
+    jobs = [job for entry, job in pairs if job.title]
+    _attach_workday_descriptions(
+        [(entry, job) for entry, job in pairs if job.title], base
+    )
     return jobs
 
 
-def _workday_job(entry: dict, host: str, site: str, company: str) -> Job:
-    external_path = entry.get("externalPath") or ""
+def _workday_external_id(entry: dict, external_path: str) -> str:
+    """Pick a stable, unique identity for a posting.
+
+    bulletFields[0] is the requisition id on most tenants, but some put a
+    location string there — trusting that blindly would give every job in a
+    city the same identity and collapse them into one record. Anything that
+    is not requisition-shaped falls back to externalPath, which is unique.
+    """
     bullets = entry.get("bulletFields") or []
+    if bullets:
+        candidate = str(bullets[0]).strip()
+        if _REQ_ID_RE.match(candidate):
+            return candidate
+    return external_path
+
+
+def _workday_job(entry: dict, host: str, site: str, locale: str, company: str) -> Job:
+    external_path = entry.get("externalPath") or ""
     location = entry.get("locationsText") or ""
+    if _VAGUE_LOCATION_RE.match(location.strip()):
+        location = ""  # the detail call supplies a real one
 
     return Job(
         source="workday",
         company=company,
-        external_id=str(bullets[0]) if bullets else external_path,
+        external_id=_workday_external_id(entry, external_path),
         title=entry.get("title") or "",
         url=(
-            f"{WORKDAY_SCHEME}://{host}/{site}{external_path}"
+            f"{WORKDAY_SCHEME}://{host}/{locale}/{site}{external_path}"
             if external_path
-            else f"{WORKDAY_SCHEME}://{host}/{site}"
+            else f"{WORKDAY_SCHEME}://{host}/{locale}/{site}"
         ),
         location=location,
         posted_at=_workday_posted_at(entry.get("postedOn")),
@@ -458,16 +496,14 @@ def _workday_job(entry: dict, host: str, site: str, company: str) -> Job:
     )
 
 
-def _attach_workday_descriptions(jobs: list[Job], base: str, postings: list[dict]) -> None:
+def _attach_workday_descriptions(pairs: list[tuple[dict, Job]], base: str) -> None:
     """Fill in each posting's body text, which the list endpoint omits.
 
     Failures are swallowed per job: a missing description weakens scoring for
     that one role, which beats losing the whole board.
     """
     targets = [
-        (job, entry.get("externalPath"))
-        for job, entry in zip(jobs, postings)
-        if entry.get("externalPath")
+        (job, entry["externalPath"]) for entry, job in pairs if entry.get("externalPath")
     ][:WORKDAY_MAX_DETAILS]
     if not targets:
         return
@@ -482,8 +518,11 @@ def _attach_workday_descriptions(jobs: list[Job], base: str, postings: list[dict
             return
         info = payload.get("jobPostingInfo") or {}
         job.description = html_to_text(info.get("jobDescription"))
+        if not job.location and info.get("location"):
+            job.location = " ".join(str(info["location"]).split())
         if info.get("remoteType"):
             job.remote = job.remote or "remote" in str(info["remoteType"]).lower()
+        job.remote = job.remote or looks_remote(job.location)
         precise = to_iso(info.get("startDate") or info.get("postedOn"))
         if precise:
             job.posted_at = precise

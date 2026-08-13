@@ -8,9 +8,11 @@ companies' own careers pages call from the browser — no scraping involved.
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
-from ..http import HttpError, get_json, get_text
+from ..http import HttpError, get_json, get_text, post_json
 from ..models import Job
 from ..util import html_to_text, looks_remote, to_iso
 
@@ -349,6 +351,179 @@ def fetch_personio(token: str, company: str) -> list[Job]:
     return jobs
 
 
+# --------------------------------------------------------------------------
+# Workday
+# --------------------------------------------------------------------------
+
+WORKDAY_HOST_RE = re.compile(r"^(?P<tenant>[A-Za-z0-9_-]+)\.(wd\d+)\.myworkdayjobs\.com$")
+WORKDAY_URL_RE = re.compile(
+    r"https?://[A-Za-z0-9_-]+\.wd\d+\.myworkdayjobs\.com/[A-Za-z0-9_/-]*", re.I
+)
+LOCALE_RE = re.compile(r"^[a-z]{2}(-[A-Za-z]{2})?$")
+
+# Workday's search endpoint caps a page at 20 regardless of what you ask for.
+WORKDAY_PAGE_SIZE = 20
+WORKDAY_MAX_JOBS = 2000
+# Descriptions come from a per-posting call, so scoring on body text costs one
+# request per job. Bounded, and run concurrently to keep a fetch reasonable.
+WORKDAY_DETAIL_WORKERS = 8
+WORKDAY_MAX_DETAILS = 400
+
+_POSTED_AGO_RE = re.compile(r"(\d+)\+?\s*(hour|day|week|month)s?\s+ago", re.I)
+
+# Real boards are always HTTPS; tests point this at a local HTTP mock.
+WORKDAY_SCHEME = "https"
+
+
+def detect_workday(url: str) -> str | None:
+    """Return "host/tenant/site", which is everything the CXS API needs."""
+    parsed, host, segments = _parse(url)
+    match = WORKDAY_HOST_RE.match(host)
+    if not match:
+        return None
+
+    tenant = match.group("tenant")
+
+    # An API URL already names both parts: /wday/cxs/<tenant>/<site>/jobs
+    lowered = [s.lower() for s in segments]
+    if "cxs" in lowered:
+        index = lowered.index("cxs")
+        if len(segments) > index + 2:
+            return f"{host}/{segments[index + 1]}/{segments[index + 2]}"
+
+    # Otherwise the site is the first non-locale path segment.
+    for segment in segments:
+        if LOCALE_RE.match(segment):
+            continue
+        return f"{host}/{tenant}/{segment}"
+    return None
+
+
+def fetch_workday(token: str, company: str) -> list[Job]:
+    try:
+        host, tenant, site = token.split("/", 2)
+    except ValueError:
+        raise HttpError(
+            f"malformed workday token {token!r}; expected 'host/tenant/site'"
+        ) from None
+
+    base = f"{WORKDAY_SCHEME}://{host}/wday/cxs/{tenant}/{site}"
+    postings: list[dict] = []
+    offset = 0
+
+    while offset < WORKDAY_MAX_JOBS:
+        payload = post_json(
+            f"{base}/jobs",
+            {
+                "appliedFacets": {},
+                "limit": WORKDAY_PAGE_SIZE,
+                "offset": offset,
+                "searchText": "",
+            },
+        )
+        batch = payload.get("jobPostings") or []
+        if not batch:
+            break
+
+        postings.extend(batch)
+        offset += len(batch)
+        if offset >= (payload.get("total") or 0):
+            break
+
+    jobs = [_workday_job(entry, host, site, company) for entry in postings]
+    jobs = [job for job in jobs if job.title]
+    _attach_workday_descriptions(jobs, base, postings)
+    return jobs
+
+
+def _workday_job(entry: dict, host: str, site: str, company: str) -> Job:
+    external_path = entry.get("externalPath") or ""
+    bullets = entry.get("bulletFields") or []
+    location = entry.get("locationsText") or ""
+
+    return Job(
+        source="workday",
+        company=company,
+        external_id=str(bullets[0]) if bullets else external_path,
+        title=entry.get("title") or "",
+        url=(
+            f"{WORKDAY_SCHEME}://{host}/{site}{external_path}"
+            if external_path
+            else f"{WORKDAY_SCHEME}://{host}/{site}"
+        ),
+        location=location,
+        posted_at=_workday_posted_at(entry.get("postedOn")),
+        description="",
+        remote=looks_remote(location, entry.get("title") or ""),
+    )
+
+
+def _attach_workday_descriptions(jobs: list[Job], base: str, postings: list[dict]) -> None:
+    """Fill in each posting's body text, which the list endpoint omits.
+
+    Failures are swallowed per job: a missing description weakens scoring for
+    that one role, which beats losing the whole board.
+    """
+    targets = [
+        (job, entry.get("externalPath"))
+        for job, entry in zip(jobs, postings)
+        if entry.get("externalPath")
+    ][:WORKDAY_MAX_DETAILS]
+    if not targets:
+        return
+
+    def load(pair) -> None:
+        job, path = pair
+        try:
+            # One retry only: the listing already succeeded, and hammering a
+            # sick detail endpoint once per job is not worth the wall time.
+            payload = get_json(f"{base}{path}", retries=2)
+        except HttpError:
+            return
+        info = payload.get("jobPostingInfo") or {}
+        job.description = html_to_text(info.get("jobDescription"))
+        if info.get("remoteType"):
+            job.remote = job.remote or "remote" in str(info["remoteType"]).lower()
+        precise = to_iso(info.get("startDate") or info.get("postedOn"))
+        if precise:
+            job.posted_at = precise
+
+    with ThreadPoolExecutor(max_workers=WORKDAY_DETAIL_WORKERS) as pool:
+        list(pool.map(load, targets))
+
+
+def _workday_posted_at(text: str | None) -> str | None:
+    """Turn Workday's relative wording into a timestamp.
+
+    The list endpoint reports "Posted 5 Days Ago" rather than a date, so this
+    is approximate by nature — good enough for the max_age_days filter.
+    """
+    if not text:
+        return None
+
+    lowered = str(text).strip().lower()
+    now = datetime.now(timezone.utc)
+
+    if "today" in lowered or "just posted" in lowered:
+        return now.isoformat()
+    if "yesterday" in lowered:
+        return (now - timedelta(days=1)).isoformat()
+
+    match = _POSTED_AGO_RE.search(lowered)
+    if not match:
+        return to_iso(text)
+
+    count = int(match.group(1))
+    unit = match.group(2)
+    delta = {
+        "hour": timedelta(hours=count),
+        "day": timedelta(days=count),
+        "week": timedelta(weeks=count),
+        "month": timedelta(days=30 * count),
+    }[unit]
+    return (now - delta).isoformat()
+
+
 def _xml_text(node, tag: str) -> str:
     found = node.find(tag)
     if found is None or found.text is None:
@@ -381,6 +556,13 @@ def sniff_embedded_board(html: str) -> tuple[str, str] | None:
 
     Returns (source_name, token), or None when nothing recognizable is there.
     """
+    # Workday first: its token needs the host as well as the path, so it is
+    # rebuilt from the whole matched URL rather than a single capture group.
+    for match in WORKDAY_URL_RE.finditer(html or ""):
+        token = detect_workday(match.group(0))
+        if token:
+            return "workday", token
+
     for name, pattern in EMBED_PATTERNS:
         for match in pattern.finditer(html or ""):
             token = match.group(1)

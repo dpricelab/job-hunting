@@ -64,8 +64,15 @@ later fetches hit the board's API directly. Pointing it straight at a board URL
 (`https://boards.greenhouse.io/northwinddata`) works too and skips the lookup.
 
 Boards read natively: **Greenhouse** (including EU), **Lever**, **Ashby**,
-**SmartRecruiters**, **Recruitee**, **Workable**, **Personio**, and any
-**RSS/Atom** feed.
+**SmartRecruiters**, **Recruitee**, **Workable**, **Workday**, **Personio**,
+and any **RSS/Atom** feed.
+
+> **Workday note.** Workday's listing endpoint returns titles and locations but
+> no body text, so jobhunt fetches each posting's description separately (8 at a
+> time, capped at 400 per run). That makes a Workday fetch slower than the other
+> boards, and it is why keyword rules can still score against the job body.
+> Its listing also reports "Posted 5 Days Ago" rather than a date, so
+> `max_age_days` is approximate until the detail call supplies a real one.
 
 For anything else, jobhunt falls back to reading the page itself: first any
 [schema.org `JobPosting`](https://schema.org/JobPosting) data embedded for
@@ -196,10 +203,10 @@ jobhunt/
   sources/
     __init__.py     registry, URL → reader
     ats.py          Greenhouse, Lever, Ashby, SmartRecruiters, Recruitee,
-                    Workable, Personio, plus embedded-board sniffing
+                    Workable, Workday, Personio, plus embedded-board sniffing
     feeds.py        RSS and Atom
     generic.py      JSON-LD and link heuristics
-tests/              90 tests, no network access required
+tests/              110 tests, no network access required
 ```
 
 ## Tests

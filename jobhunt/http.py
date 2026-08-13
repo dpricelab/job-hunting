@@ -46,13 +46,38 @@ def get(
 
     Raises HttpError on a non-retryable status or after exhausting retries.
     """
+    return _request("GET", url, params=params, headers=headers, timeout=timeout, retries=retries)
+
+
+def post(
+    url: str,
+    *,
+    json: dict | None = None,
+    headers: dict | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+    retries: int = 3,
+) -> requests.Response:
+    """POST a JSON body, with the same retry behaviour as `get`."""
+    return _request("POST", url, json=json, headers=headers, timeout=timeout, retries=retries)
+
+
+def _request(
+    method: str,
+    url: str,
+    *,
+    params: dict | None = None,
+    json: dict | None = None,
+    headers: dict | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+    retries: int = 3,
+) -> requests.Response:
     last_error = ""
     delay = 1.0
 
     for attempt in range(retries):
         try:
-            response = session().get(
-                url, params=params, headers=headers, timeout=timeout
+            response = session().request(
+                method, url, params=params, json=json, headers=headers, timeout=timeout
             )
         except requests.RequestException as exc:
             last_error = f"{type(exc).__name__}: {exc}"
@@ -71,7 +96,14 @@ def get(
 
 
 def get_json(url: str, **kwargs):
-    response = get(url, **kwargs)
+    return _as_json(get(url, **kwargs), url)
+
+
+def post_json(url: str, payload: dict, **kwargs):
+    return _as_json(post(url, json=payload, **kwargs), url)
+
+
+def _as_json(response: requests.Response, url: str):
     try:
         return response.json()
     except ValueError as exc:

@@ -20,23 +20,53 @@ companies:
   source: greenhouse
   token: eu:plos
 rules:
-  min_score: 3
+  min_score: 4
   remote_only: false
   max_age_days: 0
-  title_include: []
+
+  # The gate: a title must name one of these role families. Regexes are used
+  # so stems catch their variants, because plain terms match on word
+  # boundaries and would miss "Editorial" or "Journals".
+  title_include:
+  - 're:\bpublish(er|ers|ing)\b'
+  - 're:\beditor(s|ial)?\b'
+  - 're:\bjournals?\b'
+  - 're:peer[ -]review'
+  - 're:\bcommissioning\b'
+
   title_exclude:
   - intern
   - internship
   - graduate
-  - vice president
-  location_include: []
+  - apprentice
+  - placement
+  # "Editor" also names media roles that have nothing to do with publishing.
+  - 're:\bvideo\b'
+  - 're:\bcopy[- ]?desk\b'
+
+  # Only rejects postings that state a location; ones with none still pass.
+  location_include:
+  - London
+  - Remote
+
   location_exclude: []
   exclude_keywords: []
+
   keywords:
-    python: 3
-    typescript: 2
-    kubernetes: 2
-    aws: 1
-    machine learning: 3
-    postgres: 1
+    # The three target roles.
+    're:\bpublisher\b': 6
+    're:\bjournals?\s+(manager|publishing manager)\b': 6
+    're:\b(managing|commissioning|senior|acquisitions|publishing)\s+editor\b': 5
+    're:\beditor(ial)?\b': 3
+    're:\bpeer[ -]review\s+manager\b': 5
+    # Domain signals that mark a genuine scholarly-publishing role.
+    're:\bpeer[ -]review': 2
+    open access: 2
+    scholarly: 2
+    're:\bjournals?\b': 2
+    portfolio: 1
+    manuscript: 1
+    # Location preference, on top of the filter above.
+    London: 2
+
   title_bonus: 2

@@ -96,6 +96,28 @@ class ScoringTests(unittest.TestCase):
         self.assertFalse(verdict.kept)
         self.assertIn("New York", verdict.rejected)
 
+    def test_location_include_gates_stated_locations(self):
+        job = make_job(location="Manchester, UK")
+        verdict = score_job(job, rules(location_include=["London"]))
+        self.assertFalse(verdict.kept)
+        self.assertIn("location_include", verdict.rejected)
+
+    def test_location_include_keeps_a_matching_location(self):
+        job = make_job(location="London, UK")
+        verdict = score_job(
+            job, rules(location_include=["London"], keywords={"python": 1}, min_score=0)
+        )
+        self.assertTrue(verdict.kept)
+
+    def test_a_posting_with_no_location_survives_the_location_filter(self):
+        # Several boards omit location; rejecting those would hide good roles
+        # for a reason the user never sees.
+        job = make_job(location="")
+        verdict = score_job(
+            job, rules(location_include=["London"], keywords={"python": 1}, min_score=0)
+        )
+        self.assertTrue(verdict.kept)
+
     def test_remote_only_rejects_office_roles(self):
         verdict = score_job(make_job(location="London, UK"), rules(remote_only=True))
         self.assertFalse(verdict.kept)

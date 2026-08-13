@@ -86,8 +86,11 @@ def score_job(job: Job, rules: dict) -> Verdict:
     if hit:
         return Verdict(rejected=f"location excludes {hit!r}")
 
+    # A location filter only rejects postings that actually state a location.
+    # Some boards omit it entirely, and silently binning those would hide good
+    # roles for a reason the user never sees. Same treatment as an absent date.
     location_include = rules.get("location_include") or []
-    if location_include and not _first_match(location_include, location):
+    if location_include and location and not _first_match(location_include, location):
         return Verdict(rejected="location matched no location_include term")
 
     if rules.get("remote_only") and not job.remote:

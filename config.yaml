@@ -66,7 +66,14 @@ rules:
   location_include:
   - London
   - Remote
-  location_exclude: []
+  # "Remote" alone lets in US-remote roles, so rule those out. Matched
+  # against the location field only. Bare US cities are already handled by
+  # location_include, which they do not satisfy.
+  location_exclude:
+  - United States
+  - USA
+  # Case-sensitive, so a stray lowercase "us" in a location cannot match.
+  - 're:(?-i:\bUS\b)'
   exclude_keywords: []
   keywords:
     re:\bpublisher\b: 6

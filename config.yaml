@@ -39,6 +39,10 @@ companies:
   url: https://redwoodrecruitment.com/vacancies
   source: generic
   token: https://redwoodrecruitment.com/vacancies
+- name: Royal Society of Chemistry
+  url: https://rsc.wd103.myworkdayjobs.com/RoyalSocietyofChemistry
+  source: workday
+  token: rsc.wd103.myworkdayjobs.com/rsc/RoyalSocietyofChemistry
 rules:
   min_score: 4
   remote_only: false

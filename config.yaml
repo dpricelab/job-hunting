@@ -57,6 +57,8 @@ rules:
   - re:\bjournals?\b
   - re:peer[ -]review
   - re:\bcommissioning\b
+  - re:\bcontent\b
+  - re:\bportfolio\b
   title_exclude:
   - intern
   - internship
@@ -81,6 +83,12 @@ rules:
     re:\b(managing|commissioning|senior|acquisitions|publishing)\s+editor\b: 5
     re:\beditor(ial)?\b: 3
     re:\bpeer[ -]review\s+manager\b: 5
+    # Gate words need weights too, or a title that only matches the gate
+    # scores nothing and is rejected by min_score anyway.
+    re:\bhead\s+of\s+content\b: 5
+    re:\bcontent\s+(director|lead|manager|strategist)\b: 4
+    re:\bportfolio\s+(manager|director|lead|head)\b: 5
+    re:\bcontent\b: 2
     re:\bpeer[ -]review: 2
     open access: 2
     scholarly: 2

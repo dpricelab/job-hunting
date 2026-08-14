@@ -317,6 +317,32 @@ class AnchorFallbackTests(unittest.TestCase):
         jobs = generic._from_anchors(self.PAGE, "https://example.com/careers", "Acme")
         self.assertFalse(any("twitter" in job.url for job in jobs))
 
+    def test_agency_wording_is_recognised_as_postings(self):
+        # Search firms advertise "assignments", not "jobs".
+        page = """
+        <html><body>
+          <a href="/current-assignments/senior-publisher-london/">Senior Publisher, London</a>
+          <a href="/current-assignments/journals-director/">Journals Director</a>
+          <a href="/opportunities/commissioning-editor">Commissioning Editor</a>
+        </body></html>
+        """
+        jobs = generic._from_anchors(
+            page, "https://www.morganhealey.com/current-assignments/", "Agency"
+        )
+        self.assertEqual(len(jobs), 3)
+
+    def test_equal_opportunities_is_not_mistaken_for_an_opportunity(self):
+        page = """
+        <html><body>
+          <a href="/current-assignments/senior-publisher/">Senior Publisher</a>
+          <a href="/equal-opportunities-policy/">Equal Opportunities Statement</a>
+          <a href="/privacy-policy/">Privacy</a>
+          <a href="/jobs/cookie-policy">Cookies</a>
+        </body></html>
+        """
+        jobs = generic._from_anchors(page, "https://example.com/current-assignments/", "Agency")
+        self.assertEqual([job.title for job in jobs], ["Senior Publisher"])
+
     def test_aggregator_board_furniture_is_not_mistaken_for_a_job(self):
         # An industry jobs board sits its own admin links among the listings.
         page = """

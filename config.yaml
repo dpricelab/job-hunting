@@ -43,6 +43,10 @@ companies:
   url: https://rsc.wd103.myworkdayjobs.com/RoyalSocietyofChemistry
   source: workday
   token: rsc.wd103.myworkdayjobs.com/rsc/RoyalSocietyofChemistry
+- name: Morgan Healey (agency)
+  url: https://www.morganhealey.com/current-assignments/
+  source: generic
+  token: https://www.morganhealey.com/current-assignments/
 rules:
   min_score: 4
   remote_only: false
@@ -66,14 +70,10 @@ rules:
   location_include:
   - London
   - Remote
-  # "Remote" alone lets in US-remote roles, so rule those out. Matched
-  # against the location field only. Bare US cities are already handled by
-  # location_include, which they do not satisfy.
   location_exclude:
   - United States
   - USA
-  # Case-sensitive, so a stray lowercase "us" in a location cannot match.
-  - 're:(?-i:\bUS\b)'
+  - re:(?-i:\bUS\b)
   exclude_keywords: []
   keywords:
     re:\bpublisher\b: 6

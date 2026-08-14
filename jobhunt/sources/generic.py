@@ -20,7 +20,20 @@ from ..http import get_text
 from ..models import Job
 from ..util import html_to_text, looks_remote, to_iso
 
-JOB_URL_HINT = re.compile(r"(job|career|position|opening|vacanc|posting|role)", re.I)
+JOB_URL_HINT = re.compile(
+    # Agencies and search firms rarely say "job": they advertise assignments,
+    # appointments or opportunities.
+    r"(job|career|position|opening|vacanc|posting|role|assignment|appointment|opportunit)",
+    re.I,
+)
+
+# Pages that match the hint above but are never a posting. "Equal
+# opportunities" is the notable trap, since it contains "opportunit".
+JOB_URL_ANTI_HINT = re.compile(
+    r"(equal[-_ ]?opportunit|privacy|cookie|terms[-_ ]|/terms|policy|disclaimer|"
+    r"accessibility|sitemap|newsletter|subscribe)",
+    re.I,
+)
 NAV_TEXT = re.compile(
     r"^(all|view all|see all|apply|apply now|learn more|read more|back|next|previous|"
     r"home|about|contact|search|filter|sort|login|sign in|menu|careers?|jobs?|"
@@ -217,7 +230,7 @@ def _from_anchors(html: str, page_url: str, company: str) -> list[Job]:
 
         absolute = urljoin(page_url, href)
         host = urlparse(absolute).netloc
-        if not JOB_URL_HINT.search(absolute):
+        if not JOB_URL_HINT.search(absolute) or JOB_URL_ANTI_HINT.search(absolute):
             continue
         # A link back to the careers page itself is navigation, not a posting.
         if absolute.rstrip("/") == page_key:

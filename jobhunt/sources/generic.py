@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
@@ -31,7 +32,10 @@ JOB_URL_HINT = re.compile(
 # opportunities" is the notable trap, since it contains "opportunit".
 JOB_URL_ANTI_HINT = re.compile(
     r"(equal[-_ ]?opportunit|privacy|cookie|terms[-_ ]|/terms|policy|disclaimer|"
-    r"accessibility|sitemap|newsletter|subscribe)",
+    r"accessibility|sitemap|newsletter|subscribe|"
+    # Agency site furniture that reads like a posting: Redwood's "Your career"
+    # and "Brief us on a role" were being collected as jobs.
+    r"submit[-_ ]?a[-_ ]?(vacancy|job|role)|your[-_ ]?career|post[-_ ]?a[-_ ]?(job|role))",
     re.I,
 )
 NAV_TEXT = re.compile(
@@ -60,7 +64,186 @@ def fetch_generic(url: str, company: str) -> list[Job]:
     jobs = _from_jsonld(html, url, company)
     if jobs:
         return jobs
+
+    # Server-rendered pages can still keep their listings in a JSON payload
+    # meant for a JavaScript framework, where no amount of link-guessing will
+    # find them. Redwood's 255KB page carries 22 links and 20 vacancies.
+    jobs = _from_embedded_state(html, url, company)
+    if jobs:
+        return jobs
+
     return _from_anchors(html, url, company)
+
+
+# -- embedded application state -------------------------------------------
+
+# (label, pattern, entity_encoded). Inertia stores its payload in an HTML
+# attribute, so that one arrives escaped.
+EMBEDDED_STATE_PATTERNS: list[tuple[str, re.Pattern, bool]] = [
+    ("Inertia.js (data-page)", re.compile(r'data-page="([^"]{200,})"'), True),
+    (
+        "Next.js (__NEXT_DATA__)",
+        re.compile(r'id="__NEXT_DATA__"[^>]*>(.{200,}?)</script>', re.DOTALL),
+        False,
+    ),
+    (
+        "Nuxt (window.__NUXT__)",
+        re.compile(r"window\.__NUXT__\s*=\s*(.{200,}?)</script>", re.DOTALL),
+        False,
+    ),
+    (
+        "Remix (__remixContext)",
+        re.compile(r"window\.__remixContext\s*=\s*(.{200,}?)</script>", re.DOTALL),
+        False,
+    ),
+    (
+        "Generic application/json",
+        re.compile(
+            r'<script[^>]+type=["\']application/json["\'][^>]*>(.{200,}?)</script>',
+            re.DOTALL | re.IGNORECASE,
+        ),
+        False,
+    ),
+]
+
+TITLE_KEYS = ("title", "job_title", "jobTitle", "position", "role_name", "name")
+URL_KEYS = ("url", "link", "permalink", "apply_url", "job_url", "href")
+SLUG_KEYS = ("slug", "path", "reference", "ref")
+ID_KEYS = ("id", "uuid", "job_id", "reference", "ref", "slug")
+LOCATION_KEYS = ("location", "city", "town", "region", "place", "office", "locations")
+DESCRIPTION_KEYS = ("description", "summary", "excerpt", "content", "body", "intro")
+DATE_KEYS = ("published_at", "posted_at", "created_at", "date", "live_from")
+
+
+def find_embedded_state(html: str):
+    """Yield (label, parsed) for every embedded payload that parses as JSON."""
+    for label, pattern, encoded in EMBEDDED_STATE_PATTERNS:
+        for match in pattern.finditer(html or ""):
+            raw = match.group(1)
+            if encoded:
+                raw = unescape(raw)
+            try:
+                yield label, json.loads(raw.strip().rstrip(";"))
+            except (json.JSONDecodeError, ValueError):
+                continue  # Nuxt and Remix sometimes emit JS, not JSON
+
+
+def _from_embedded_state(html: str, page_url: str, company: str) -> list[Job]:
+    best: list[dict] = []
+    for _label, payload in find_embedded_state(html):
+        for candidate in _candidate_arrays(payload):
+            if len(candidate) > len(best):
+                best = candidate
+    return [_job_from_mapping(entry, page_url, company) for entry in best]
+
+
+def _candidate_arrays(node, depth: int = 0):
+    """Yield lists that look like a set of job postings.
+
+    Being strict matters more than being thorough: a menu of links also has
+    "title" on every item, so an entry must carry an identifier of some kind
+    and not read like navigation.
+    """
+    if depth > 8:
+        return
+    if isinstance(node, list):
+        entries = [item for item in node if isinstance(item, dict) and _looks_like_job(item)]
+        if len(entries) >= 2:
+            yield entries
+        for item in node:
+            yield from _candidate_arrays(item, depth + 1)
+    elif isinstance(node, dict):
+        for value in node.values():
+            yield from _candidate_arrays(value, depth + 1)
+
+
+DETAIL_KEYS = (
+    "department",
+    "team",
+    "category",
+    "sector",
+    "salary",
+    "contract_type",
+    "employment_type",
+    "closing_date",
+)
+
+
+def _looks_like_job(entry: dict) -> bool:
+    """Does this record read like a posting rather than a menu item?
+
+    A title plus either an identifier or some posting-ish detail. Kept
+    deliberately loose: a stray menu entry that slips through is rejected by
+    the title rules moments later, whereas a real vacancy that fails this
+    test is lost silently.
+    """
+    title = _first_value(entry, TITLE_KEYS)
+    if not isinstance(title, str) or not (3 <= len(title.strip()) <= 120):
+        return False
+    if NAV_TEXT.match(title.strip()):
+        return False
+
+    has_identity = any(
+        isinstance(_first_value(entry, keys), (str, int))
+        for keys in (URL_KEYS, SLUG_KEYS, ID_KEYS)
+    )
+    has_detail = any(
+        _first_value(entry, keys) is not None
+        for keys in (LOCATION_KEYS, DESCRIPTION_KEYS, DATE_KEYS, DETAIL_KEYS)
+    )
+    return has_identity or has_detail
+
+
+def _first_value(entry: dict, keys):
+    for key in keys:
+        if key in entry and entry[key] not in (None, ""):
+            return entry[key]
+    return None
+
+
+def _flatten(value) -> str:
+    """Locations arrive as a string, an object, or a list of either."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("name", "title", "label", "city"):
+            if value.get(key):
+                return str(value[key])
+        return ""
+    if isinstance(value, list):
+        parts = [_flatten(item) for item in value]
+        return ", ".join(p for p in parts if p)
+    return str(value)
+
+
+def _job_from_mapping(entry: dict, page_url: str, company: str) -> Job:
+    title = str(_first_value(entry, TITLE_KEYS) or "").strip()
+
+    url = _first_value(entry, URL_KEYS)
+    if isinstance(url, str) and url:
+        absolute = urljoin(page_url, url)
+    else:
+        slug = _first_value(entry, SLUG_KEYS)
+        # Postings usually live beneath the listing page, so join to its path
+        # rather than replacing it.
+        absolute = urljoin(page_url.rstrip("/") + "/", str(slug)) if slug else page_url
+
+    identifier = _first_value(entry, ID_KEYS)
+    location = _flatten(_first_value(entry, LOCATION_KEYS))
+
+    return Job(
+        source="embedded",
+        company=company,
+        external_id=str(identifier) if identifier is not None else absolute,
+        title=title,
+        url=absolute,
+        location=location,
+        department=_flatten(_first_value(entry, ("department", "team", "category", "sector"))),
+        posted_at=to_iso(_first_value(entry, DATE_KEYS)),
+        description=html_to_text(_flatten(_first_value(entry, DESCRIPTION_KEYS))),
+    )
 
 
 # -- schema.org JSON-LD ----------------------------------------------------

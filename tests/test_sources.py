@@ -1,3 +1,4 @@
+import json
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -289,6 +290,174 @@ class JsonLdTests(unittest.TestCase):
     def test_survives_malformed_json(self):
         page = '<script type="application/ld+json">{not json</script>'
         self.assertEqual(generic._from_jsonld(page, "https://example.com/", "Acme"), [])
+
+
+class EmbeddedStateTests(unittest.TestCase):
+    """Listings kept in a framework's JSON payload rather than in the markup.
+
+    Redwood's page is 255KB with 22 links and 20 vacancies, all of them inside
+    an Inertia data-page attribute.
+    """
+
+    @staticmethod
+    def inertia(payload: dict) -> str:
+        from html import escape
+
+        blob = escape(json.dumps(payload)) + " " * 250  # clear the length floor
+        return f'<html><body><div id="app" data-page="{blob}"></div></body></html>'
+
+    VACANCIES = {
+        "props": {
+            "vacancies": [
+                {
+                    "id": 41,
+                    "title": "Senior Publisher, Journals",
+                    "slug": "senior-publisher-journals",
+                    "location": {"name": "London"},
+                    "description": "<p>Own a <b>journals</b> portfolio.</p>",
+                    "published_at": "2026-08-01",
+                },
+                {
+                    "id": 42,
+                    "title": "Commissioning Editor",
+                    "slug": "commissioning-editor",
+                    "location": "Oxford",
+                    "description": "Commission scholarly content.",
+                    "published_at": "2026-08-10",
+                },
+            ]
+        }
+    }
+
+    def extract(self, payload: dict, url="https://agency.example/vacancies"):
+        return generic._from_embedded_state(self.inertia(payload), url, "Agency")
+
+    def test_vacancies_are_extracted(self):
+        jobs = self.extract(self.VACANCIES)
+        self.assertEqual(len(jobs), 2)
+        self.assertEqual(jobs[0].title, "Senior Publisher, Journals")
+        self.assertEqual(jobs[0].external_id, "41")
+
+    def test_nested_location_objects_are_flattened(self):
+        jobs = self.extract(self.VACANCIES)
+        self.assertEqual(jobs[0].location, "London")
+        self.assertEqual(jobs[1].location, "Oxford")
+
+    def test_descriptions_are_flattened_to_text(self):
+        jobs = self.extract(self.VACANCIES)
+        self.assertEqual(jobs[0].description, "Own a journals portfolio.")
+
+    def test_slugs_are_resolved_beneath_the_listing_page(self):
+        jobs = self.extract(self.VACANCIES)
+        self.assertEqual(
+            jobs[0].url, "https://agency.example/vacancies/senior-publisher-journals"
+        )
+
+    def test_an_explicit_url_is_preferred_over_a_slug(self):
+        payload = {
+            "props": {
+                "items": [
+                    {"id": 1, "title": "Publisher", "slug": "x", "url": "/roles/publisher-1"},
+                    {"id": 2, "title": "Editor", "slug": "y", "url": "/roles/editor-2"},
+                ]
+            }
+        }
+        jobs = self.extract(payload)
+        self.assertEqual(jobs[0].url, "https://agency.example/roles/publisher-1")
+
+    def test_dates_are_parsed(self):
+        jobs = self.extract(self.VACANCIES)
+        self.assertTrue(jobs[0].posted_at.startswith("2026-08-01"))
+
+    def test_navigation_menus_are_not_mistaken_for_vacancies(self):
+        payload = {
+            "props": {
+                "menu": [
+                    {"title": "About", "url": "/about"},
+                    {"title": "Contact", "url": "/contact"},
+                    {"title": "Careers", "url": "/careers"},
+                ]
+            }
+        }
+        # "About" and "Contact" read as navigation, leaving too few to qualify.
+        self.assertEqual(self.extract(payload), [])
+
+    def test_the_largest_job_like_array_wins(self):
+        payload = {
+            "props": {
+                "featured": [
+                    {"id": 1, "title": "Featured Publisher", "slug": "a"},
+                    {"id": 2, "title": "Featured Editor", "slug": "b"},
+                ],
+                "vacancies": [
+                    {"id": i, "title": f"Role {i}", "slug": f"role-{i}"} for i in range(9)
+                ],
+            }
+        }
+        jobs = self.extract(payload)
+        self.assertEqual(len(jobs), 9)
+
+    def test_bare_titles_with_no_detail_are_ignored(self):
+        # Marketing blurbs carry a title and nothing else.
+        payload = {"props": {"blurbs": [{"title": "We value people"}, {"title": "Our ethos"}]}}
+        self.assertEqual(self.extract(payload), [])
+
+    def test_a_posting_with_no_identifier_is_still_collected(self):
+        # Losing a real vacancy is worse than admitting a stray record, so a
+        # title plus posting-ish detail is enough even with no id or slug.
+        payload = {
+            "props": {
+                "roles": [
+                    {"title": "Senior Publisher", "location": "London"},
+                    {"title": "Managing Editor", "location": "London"},
+                ]
+            }
+        }
+        jobs = self.extract(payload)
+        self.assertEqual(sorted(j.title for j in jobs), ["Managing Editor", "Senior Publisher"])
+
+    def test_a_single_entry_is_not_enough_to_qualify(self):
+        payload = {"props": {"thing": [{"id": 1, "title": "Lone Item", "slug": "x"}]}}
+        self.assertEqual(self.extract(payload), [])
+
+    def test_malformed_payloads_do_not_raise(self):
+        html = '<html><body><div data-page="{not valid json' + "x" * 250 + '"></div></body></html>'
+        self.assertEqual(generic._from_embedded_state(html, "https://x.example/", "A"), [])
+
+    def test_a_page_with_no_payload_yields_nothing(self):
+        self.assertEqual(
+            generic._from_embedded_state("<html><body>hi</body></html>", "https://x/", "A"), []
+        )
+
+    def test_next_js_payloads_are_read_too(self):
+        payload = {
+            "props": {
+                "pageProps": {
+                    "jobs": [
+                        {"id": "a", "title": "Managing Editor", "url": "/j/a"},
+                        {"id": "b", "title": "Journals Manager", "url": "/j/b"},
+                    ]
+                }
+            }
+        }
+        html = (
+            '<script id="__NEXT_DATA__" type="application/json">'
+            + json.dumps(payload)
+            + " " * 250
+            + "</script>"
+        )
+        jobs = generic._from_embedded_state(html, "https://x.example/careers", "X")
+        self.assertEqual(sorted(j.title for j in jobs), ["Journals Manager", "Managing Editor"])
+
+    def test_the_reader_prefers_structured_data_when_both_exist(self):
+        # JSON-LD is authoritative; the payload is only a fallback.
+        page = (
+            '<script type="application/ld+json">'
+            '{"@type":"JobPosting","title":"From JSON-LD","url":"/a"}'
+            "</script>" + self.inertia(self.VACANCIES)
+        )
+        jobs = generic._from_jsonld(page, "https://agency.example/vacancies", "Agency")
+        self.assertEqual([j.title for j in jobs], ["From JSON-LD"])
 
 
 class AnchorFallbackTests(unittest.TestCase):

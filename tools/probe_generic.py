@@ -83,28 +83,22 @@ def main(argv: list[str]) -> int:
     # A page can be server-rendered yet still hide its listings inside a JSON
     # blob meant for a JavaScript framework. That looks identical to an empty
     # page from the link heuristics, but is very much readable.
-    state_patterns = [
-        ("Inertia.js (data-page)", r'data-page="([^"]{200,})"'),
-        ("Next.js (__NEXT_DATA__)", r'id="__NEXT_DATA__"[^>]*>(.{200,}?)</script>'),
-        ("Nuxt (window.__NUXT__)", r"window\.__NUXT__\s*=\s*(.{200,}?)</script>"),
-        ("Remix (__remixContext)", r"window\.__remixContext\s*=\s*(.{200,}?)</script>"),
-        ("Generic application/json", r'<script[^>]+type="application/json"[^>]*>(.{200,}?)</script>'),
-    ]
-
+    # Patterns come from the reader itself, so probe and reader cannot drift.
     print("EMBEDDED APPLICATION STATE (listings hidden in a JSON payload)")
     found_state = False
-    for label, pattern in state_patterns:
-        for match in generic.re.finditer(pattern, html, generic.re.DOTALL | generic.re.I):
-            # Inertia stores its payload in an attribute, so the JSON arrives
-            # entity-encoded and must be unescaped before it can be inspected.
-            blob = unescape(match.group(1))
-            found_state = True
-            titles = len(generic.re.findall(r'"(job_?title|title|position|role_?name)"\s*:', blob, generic.re.I))
-            print(f"  {label}: {len(blob):,} characters")
-            print(f"    title-like keys inside: {titles}")
-            break
+    for label, payload in generic.find_embedded_state(html):
+        found_state = True
+        print(f"  {label}: parsed")
+        break
     if not found_state:
         print("  none found")
+
+    embedded = generic._from_embedded_state(html, url, company.name)
+    print(f"  postings extracted from it: {len(embedded)}")
+    for job in embedded[:SHOW]:
+        print(f"    - {job.title}  [{job.location or 'no location'}]  {job.url}")
+    if len(embedded) > SHOW:
+        print(f"    ... and {len(embedded) - SHOW} more")
     print()
 
     # -- link heuristics --------------------------------------------------
@@ -164,10 +158,11 @@ def main(argv: list[str]) -> int:
     print("\nVERDICT")
     if postings:
         print("  Structured data was found and is what the reader uses.")
+    elif embedded:
+        print("  The listings come from the embedded JSON payload above.")
     elif found_state:
-        print("  The listings are very likely inside the embedded JSON above,")
-        print("  which the reader does not currently look at. Readable, but it")
-        print("  needs support for that payload rather than a tweak.")
+        print("  There is an embedded payload, but no job-like records were")
+        print("  recognised inside it. Its field names may be unusual.")
     elif kept:
         print("  No structured data; the reader is guessing from links above.")
     elif len(collector.anchors) < 10 and len(html) < 60000:

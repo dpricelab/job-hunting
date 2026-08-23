@@ -47,6 +47,7 @@ companies:
   url: https://jobs.oup.com/jobs/vacancy/find/results/
   source: generic
   token: https://jobs.oup.com/jobs/vacancy/find/results/
+  enabled: false
 - name: Cambridge University Press
   url: https://careers.cambridge.org/jobs/vacancy/find/results/
   source: generic

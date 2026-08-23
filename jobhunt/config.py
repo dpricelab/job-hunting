@@ -44,6 +44,7 @@ class Config:
     companies: list[Company] = field(default_factory=list)
     rules: dict = field(default_factory=lambda: dict(DEFAULT_RULES))
     path: Path = field(default_factory=config_path)
+    http: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Config":
@@ -80,6 +81,15 @@ class Config:
                 company.name = _name_from_url(company.url)
             companies.append(company)
 
+        # Applied on load so every entry point gets it, the probes included.
+        http_settings = raw.get("http") or {}
+        if not isinstance(http_settings, dict):
+            raise ConfigError("'http' must be a mapping")
+        if http_settings.get("user_agent"):
+            from . import http as http_module
+
+            http_module.set_user_agent(str(http_settings["user_agent"]))
+
         rules = dict(DEFAULT_RULES)
         user_rules = raw.get("rules") or {}
         if not isinstance(user_rules, dict):
@@ -87,7 +97,7 @@ class Config:
         rules.update(user_rules)
         _validate_rules(rules)
 
-        return cls(companies=companies, rules=rules, path=path)
+        return cls(companies=companies, rules=rules, path=path, http=dict(http_settings))
 
     def save(self, path: Path | None = None) -> Path:
         """Write the config back out.
@@ -100,6 +110,8 @@ class Config:
             "companies": [c.to_dict() for c in self.companies],
             "rules": self.rules,
         }
+        if self.http:
+            payload["http"] = self.http
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
             yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),

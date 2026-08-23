@@ -12,6 +12,14 @@ DEFAULT_TIMEOUT = 20
 USER_AGENT = f"jobhunt/{__version__} (personal job search tool)"
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 
+# Some careers sites sit behind protection that returns an empty body to any
+# client it does not recognise as a browser. Setting http.user_agent in
+# config.yaml swaps this in for them.
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+)
+
 
 class HttpError(Exception):
     """A request failed in a way the caller should report, not crash on."""
@@ -20,13 +28,25 @@ class HttpError(Exception):
 _session: requests.Session | None = None
 
 
+_user_agent = USER_AGENT
+
+
+def set_user_agent(value: str | None) -> None:
+    """Override how this client identifies itself, for sites that refuse
+    anything they do not recognise as a browser."""
+    global _user_agent
+    _user_agent = value or USER_AGENT
+    if _session is not None:
+        _session.headers["User-Agent"] = _user_agent
+
+
 def session() -> requests.Session:
     global _session
     if _session is None:
         _session = requests.Session()
         _session.headers.update(
             {
-                "User-Agent": USER_AGENT,
+                "User-Agent": _user_agent,
                 "Accept": "application/json, text/html;q=0.9, */*;q=0.8",
                 "Accept-Language": "en-GB,en;q=0.9",
             }

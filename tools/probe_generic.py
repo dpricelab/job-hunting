@@ -24,6 +24,7 @@ from urllib.parse import urljoin, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from jobhunt.config import Config  # noqa: E402
+from jobhunt import http as http_module  # noqa: E402
 from jobhunt.http import HttpError, get  # noqa: E402
 from jobhunt.sources import generic  # noqa: E402
 
@@ -66,6 +67,35 @@ def main(argv: list[str]) -> int:
     html = response.text
     print(f"HTTP {response.status_code}, {len(html):,} bytes of HTML")
     print(f"Content-Type: {response.headers.get('Content-Type', 'unknown')}\n")
+
+    # An empty body is not a JavaScript shell — a shell at least ships markup.
+    # It usually means protection that ignores clients it does not recognise,
+    # so test that theory rather than reporting a misleading verdict.
+    if len(html.strip()) < 200:
+        print("EMPTY RESPONSE")
+        print("  The server returned essentially nothing. That is not a page")
+        print("  this reader can fail to understand: there is no page.")
+        print(f"  Sent as: {http_module._user_agent}")
+
+        try:
+            retry = get(url, headers={"User-Agent": http_module.BROWSER_USER_AGENT})
+        except HttpError as exc:
+            print(f"  Retry as a browser also failed: {exc}")
+            return 1
+
+        print(f"  Retried as a browser: HTTP {retry.status_code}, {len(retry.text):,} bytes")
+        if len(retry.text.strip()) > 200:
+            print("\n  That is the problem: the site serves nothing to this tool")
+            print("  but serves the page to a browser. Fix it by adding to")
+            print("  config.yaml, at the same level as 'companies' and 'rules':")
+            print("\n    http:")
+            print(f'      user_agent: "{http_module.BROWSER_USER_AGENT}"')
+            print("\n  Then run this probe again to see what the page contains.")
+        else:
+            print("\n  A browser identity does not help either, so the listings")
+            print("  are loaded from somewhere else entirely. Open the page with")
+            print("  F12 > Network > Fetch/XHR and see which URL returns the jobs.")
+        return 0
 
     # -- structured data --------------------------------------------------
     blocks = generic.LDJSON_RE.findall(html)

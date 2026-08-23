@@ -99,6 +99,29 @@ def main(argv: list[str]) -> int:
         print(f"    - {job.title}  [{job.location or 'no location'}]  {job.url}")
     if len(embedded) > SHOW:
         print(f"    ... and {len(embedded) - SHOW} more")
+
+    # Every site names its fields differently, and the reader maps them by
+    # guessing. Show the real ones so a wrong guess is obvious.
+    raw_best: list[dict] = []
+    for _label, payload in generic.find_embedded_state(html):
+        for candidate in generic._candidate_arrays(payload):
+            if len(candidate) > len(raw_best):
+                raw_best = candidate
+
+    if raw_best:
+        print("\n  raw fields on the first record:")
+        for key, value in sorted(raw_best[0].items()):
+            preview = str(value)
+            if len(preview) > 70:
+                preview = preview[:69] + "..."
+            print(f"    {key:<24} {preview}")
+        if len(raw_best) > 1:
+            print("\n  same fields on the second record, to show what varies:")
+            for key, value in sorted(raw_best[1].items()):
+                preview = str(value)
+                if len(preview) > 70:
+                    preview = preview[:69] + "..."
+                print(f"    {key:<24} {preview}")
     print()
 
     # -- link heuristics --------------------------------------------------

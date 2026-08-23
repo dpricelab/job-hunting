@@ -20,6 +20,9 @@ class Job:
     location: str = ""
     department: str = ""
     posted_at: str | None = None
+    # Closing date, where the board publishes one. Most ATS APIs do not, so
+    # this is often None and nothing may depend on it being set.
+    deadline: str | None = None
     description: str = ""
     remote: bool = False
 

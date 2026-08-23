@@ -571,6 +571,7 @@ def _attach_workday_descriptions(pairs: list[tuple[dict, Job]], base: str) -> No
         precise = to_iso(info.get("startDate") or info.get("postedOn"))
         if precise:
             job.posted_at = precise
+        job.deadline = to_iso(info.get("endDate") or info.get("jobPostingEndDate"))
 
     with ThreadPoolExecutor(max_workers=WORKDAY_DETAIL_WORKERS) as pool:
         list(pool.map(load, targets))

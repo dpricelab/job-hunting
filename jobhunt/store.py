@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     location    TEXT,
     department  TEXT,
     posted_at   TEXT,
+    deadline    TEXT,
     description TEXT,
     remote      INTEGER DEFAULT 0,
     score       REAL DEFAULT 0,
@@ -60,7 +61,19 @@ class Store:
         self.conn = sqlite3.connect(str(self.path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(_SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a database was first created.
+
+        CREATE TABLE IF NOT EXISTS leaves an existing table untouched, so a
+        new column has to be added explicitly or every query naming it fails.
+        """
+        existing = {row["name"] for row in self.conn.execute("PRAGMA table_info(jobs)")}
+        for column, ddl in (("deadline", "TEXT"),):
+            if column not in existing:
+                self.conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} {ddl}")
 
     def close(self) -> None:
         self.conn.close()
@@ -95,15 +108,16 @@ class Store:
                 """
                 INSERT INTO jobs (
                     uid, source, company, external_id, title, url, location,
-                    department, posted_at, description, remote, score, matched,
-                    rejected, first_seen, last_seen
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    department, posted_at, deadline, description, remote, score,
+                    matched, rejected, first_seen, last_seen
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(uid) DO UPDATE SET
                     title       = excluded.title,
                     url         = excluded.url,
                     location    = excluded.location,
                     department  = excluded.department,
                     posted_at   = COALESCE(excluded.posted_at, jobs.posted_at),
+                    deadline    = COALESCE(excluded.deadline, jobs.deadline),
                     description = excluded.description,
                     remote      = excluded.remote,
                     score       = excluded.score,
@@ -122,6 +136,7 @@ class Store:
                     job.location,
                     job.department,
                     job.posted_at,
+                    job.deadline,
                     job.description,
                     1 if job.remote else 0,
                     verdict.score,

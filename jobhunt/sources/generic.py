@@ -130,6 +130,18 @@ OPAQUE_CODE_RE = re.compile(r"^[A-Z0-9]{6,16}$")
 LOCATION_KEYS = ("location", "city", "town", "region", "place", "office", "locations")
 DESCRIPTION_KEYS = ("description", "summary", "excerpt", "content", "body", "intro")
 DATE_KEYS = ("published_at", "posted_at", "created_at", "date", "live_from")
+# Redwood's payload calls it publish_until; other sites use other names.
+DEADLINE_KEYS = (
+    "publish_until",
+    "closing_date",
+    "closes_at",
+    "deadline",
+    "valid_through",
+    "validThrough",
+    "expires_at",
+    "end_date",
+    "apply_by",
+)
 
 
 def find_embedded_state(html: str):
@@ -148,7 +160,7 @@ def find_embedded_state(html: str):
 def _has_detail(entry: dict) -> bool:
     return any(
         _first_value(entry, keys) is not None
-        for keys in (LOCATION_KEYS, DESCRIPTION_KEYS, DATE_KEYS, DETAIL_KEYS)
+        for keys in (LOCATION_KEYS, DESCRIPTION_KEYS, DATE_KEYS, DEADLINE_KEYS, DETAIL_KEYS)
     )
 
 
@@ -264,7 +276,7 @@ def _looks_like_job(entry: dict) -> bool:
     )
     has_detail = any(
         _first_value(entry, keys) is not None
-        for keys in (LOCATION_KEYS, DESCRIPTION_KEYS, DATE_KEYS, DETAIL_KEYS)
+        for keys in (LOCATION_KEYS, DESCRIPTION_KEYS, DATE_KEYS, DEADLINE_KEYS, DETAIL_KEYS)
     )
     return has_identity or has_detail
 
@@ -322,6 +334,7 @@ def _job_from_mapping(
         location=location,
         department=_flatten(_first_value(entry, ("department", "team", "category", "sector"))),
         posted_at=to_iso(_first_value(entry, DATE_KEYS)),
+        deadline=to_iso(_first_value(entry, DEADLINE_KEYS)),
         description=html_to_text(_flatten(_first_value(entry, DESCRIPTION_KEYS))),
     )
 
@@ -400,6 +413,7 @@ def _job_from_posting(node: dict, page_url: str, company: str) -> Job | None:
         location=location,
         department=str(department or ""),
         posted_at=to_iso(node.get("datePosted")),
+        deadline=to_iso(node.get("validThrough")),
         description=html_to_text(node.get("description")),
         remote=remote or looks_remote(location),
     )

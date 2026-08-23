@@ -176,33 +176,51 @@ class IntegrationTests(unittest.TestCase):
             ]
         self.assertIn("Engineering Intern", closed)
 
-    def test_digest_reports_only_new_roles_on_the_second_run(self):
+    def test_an_untriaged_role_stays_in_the_digest(self):
+        # The digest is an inbox: not getting through the list must not lose
+        # a role that is still open.
         self.run_cli("fetch")
         digest = self.base / "digest.html"
 
-        code, out = self.run_cli("digest", "--out", str(digest))
-        self.assertEqual(code, 0, out)
-        html = digest.read_text()
-        self.assertIn("Senior Python Engineer", html)
-        self.assertNotIn("Head of Sales", html)
-
-        # Nothing changed, so the next digest is empty.
         self.run_cli("digest", "--out", str(digest))
-        self.assertIn("Nothing new this run", digest.read_text())
+        self.assertIn("Senior Python Engineer", digest.read_text())
 
-        # A new posting shows up, and only that one.
+        self.run_cli("digest", "--out", str(digest))
+        self.assertIn("Senior Python Engineer", digest.read_text())
+
+    def test_triaging_a_role_removes_it_from_the_digest(self):
+        self.run_cli("fetch")
+        uid = self.rows()[0]["uid"]
+        digest = self.base / "digest.html"
+
+        self.run_cli("mark", uid, "applied")
+        self.run_cli("digest", "--out", str(digest))
+        self.assertNotIn("Senior Python Engineer", digest.read_text())
+
+        # --all still shows it, so nothing is truly hidden.
+        self.run_cli("digest", "--out", str(digest), "--all")
+        self.assertIn("Senior Python Engineer", digest.read_text())
+
+    def test_arrivals_since_the_last_digest_are_flagged(self):
+        self.run_cli("fetch")
+        digest = self.base / "digest.html"
+        self.run_cli("digest", "--out", str(digest))
+
         _Handler.payload = SECOND_FETCH
         self.run_cli("fetch")
         self.run_cli("digest", "--out", str(digest))
-        html = digest.read_text()
-        self.assertIn("Staff Python Engineer", html)
-        self.assertNotIn("Senior Python Engineer", html)
 
-        # --all rebuilds the full picture.
-        self.run_cli("digest", "--out", str(digest), "--all")
         html = digest.read_text()
+        # Both are present; only the newcomer is badged.
         self.assertIn("Staff Python Engineer", html)
         self.assertIn("Senior Python Engineer", html)
+        self.assertIn('class="flag new"', html)
+
+    def test_a_rejected_role_never_reaches_the_digest(self):
+        self.run_cli("fetch")
+        digest = self.base / "digest.html"
+        self.run_cli("digest", "--out", str(digest), "--all")
+        self.assertNotIn("Head of Sales", digest.read_text())
 
     def test_digest_escapes_untrusted_text(self):
         # Job titles are third-party text and land in HTML we generate, so they

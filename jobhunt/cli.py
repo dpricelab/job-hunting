@@ -658,28 +658,38 @@ def cmd_mark(args) -> int:
 
 
 def cmd_digest(args) -> int:
+    """Write the digest.
+
+    By default this is an inbox, not a newsletter: every open role you have
+    not triaged, however long ago it arrived. Filtering by "since the last
+    digest" meant a role you did not get through vanished the next day while
+    still being open, which is the one failure a job search cannot afford.
+    """
     out = Path(args.out) if args.out else Path("out/digest.html")
 
     with _store(args) as store:
-        since = None
-        if not args.all:
-            since = args.since or store.meta_get("last_digest_at")
+        last_digest = store.meta_get("last_digest_at")
 
         rows = store.query(
             rejected=False,
+            status=None if args.all else "new",
             min_score=args.min_score,
             company=args.company,
-            since=since,
+            since=args.since,
             limit=args.limit,
         )
 
-        if since:
-            scope = f"new since {since[:10]}"
+        if args.all:
+            scope = "everything matching, triaged or not"
         else:
-            scope = "all matching roles"
-        subtitle = f"{len(rows)} {'role' if len(rows) == 1 else 'roles'} {SYM['dot']} {scope}"
+            scope = "open roles you have not triaged yet"
 
-        html = render_digest(rows, subtitle=subtitle)
+        fresh = sum(1 for row in rows if last_digest and row["first_seen"] > last_digest)
+        subtitle = f"{len(rows)} {'role' if len(rows) == 1 else 'roles'} {SYM['dot']} {scope}"
+        if fresh:
+            subtitle += f" {SYM['dot']} {fresh} new since last time"
+
+        html = render_digest(rows, subtitle=subtitle, since=last_digest)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(html, encoding="utf-8")
 
@@ -687,8 +697,13 @@ def cmd_digest(args) -> int:
             store.meta_set("last_digest_at", now_iso())
 
     print(f"Wrote {green(str(out))} {SYM['dash']} {subtitle}")
-    if not rows and not args.all:
-        print(dim("Nothing new since the last digest. Use --all to rebuild the full list."))
+    if not rows:
+        print(
+            dim(
+                "Nothing untriaged. Mark roles with `jobhunt mark <id> applied|ignored`, "
+                "or use --all to see everything again."
+            )
+        )
 
     if args.open:
         webbrowser.open(out.resolve().as_uri())
@@ -833,7 +848,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("digest", help="write the HTML digest")
     p.add_argument("--out", help="output path (default: out/digest.html)")
     p.add_argument("--open", action="store_true", help="open it in your browser")
-    p.add_argument("--all", action="store_true", help="include everything, not just new roles")
+    p.add_argument(
+        "--all", action="store_true", help="include triaged roles too, not just untriaged"
+    )
     p.add_argument("--since", help="ISO date; include roles first seen after it")
     p.add_argument("--company")
     p.add_argument("--min-score", type=float)

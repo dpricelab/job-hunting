@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .util import human_age, truncate
 
@@ -56,6 +56,12 @@ input[type=search]{flex:1;min-width:220px}
 .company{font-weight:600;color:var(--text)}
 .snippet{color:var(--muted);font-size:13.5px;margin-top:9px}
 .chips{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
+.flags{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+.flag{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:20px;
+      border:1px solid var(--border);color:var(--muted)}
+.flag.new{background:var(--accent);border-color:var(--accent);color:#fff}
+.flag.deadline{background:var(--chip)}
+.flag.deadline.urgent{background:#b4441f;border-color:#b4441f;color:#fff}
 .chip{background:var(--chip);border-radius:6px;padding:2px 8px;font-size:12px;color:var(--muted)}
 .uid{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;opacity:.7}
 .empty{
@@ -101,14 +107,16 @@ def _esc(value) -> str:
     return html.escape(str(value or ""), quote=True)
 
 
-def render_digest(rows, *, subtitle: str = "", generated_at: str | None = None) -> str:
+def render_digest(
+    rows, *, subtitle: str = "", generated_at: str | None = None, since: str | None = None
+) -> str:
     """Build the digest page. `rows` are sqlite3.Row/dict-like job records."""
     jobs = [dict(row) for row in rows]
     generated = generated_at or datetime.now().strftime("%d %b %Y, %H:%M")
     companies = sorted({j.get("company", "") for j in jobs if j.get("company")})
 
     options = "".join(f'<option value="{_esc(c)}">{_esc(c)}</option>' for c in companies)
-    body = "\n".join(_job_card(job) for job in jobs) if jobs else _empty_state()
+    body = "\n".join(_job_card(job, since) for job in jobs) if jobs else _empty_state()
 
     return f"""<!doctype html>
 <html lang="en">
@@ -147,7 +155,7 @@ def render_digest(rows, *, subtitle: str = "", generated_at: str | None = None) 
 """
 
 
-def _job_card(job: dict) -> str:
+def _job_card(job: dict, since: str | None = None) -> str:
     score = job.get("score") or 0
     score_label = int(score) if float(score).is_integer() else round(float(score), 1)
 
@@ -171,6 +179,17 @@ def _job_card(job: dict) -> str:
     meta_bits.append(f'<span class="uid">{_esc(job.get("uid", ""))}</span>')
     meta = '<span class="dot">·</span>'.join(meta_bits)
 
+    flags = ""
+    if since and (job.get("first_seen") or "") > since:
+        flags += '<span class="flag new">New</span>'
+    closing = _closing_label(job.get("deadline"))
+    if closing:
+        urgent = " urgent" if closing.startswith(("Closes today", "Closes tomorrow")) or (
+            closing.startswith("Closes in") and int(closing.split()[2]) <= 7
+        ) else ""
+        flags += f'<span class="flag deadline{urgent}">{_esc(closing)}</span>'
+    
+
     chips = "".join(f'<span class="chip">{_esc(term)}</span>' for term in matched[:12])
     snippet = truncate(job.get("description") or "", 240)
 
@@ -185,6 +204,7 @@ def _job_card(job: dict) -> str:
       <span class="badge">{_esc(score_label)}</span>
     </div>
     <div class="meta">{meta}</div>
+    {f'<div class="flags">{flags}</div>' if flags else ''}
     {f'<div class="snippet">{_esc(snippet)}</div>' if snippet else ''}
     {f'<div class="chips">{chips}</div>' if chips else ''}
   </article>"""
@@ -192,7 +212,28 @@ def _job_card(job: dict) -> str:
 
 def _empty_state() -> str:
     return """  <div class="empty">
-    <p><strong>Nothing new this run.</strong></p>
-    <p>Every matching role has been seen already. Try <code>jobhunt digest --all</code>
-       to rebuild the full list, or loosen <code>rules</code> in your config.</p>
+    <p><strong>Nothing left to triage.</strong></p>
+    <p>Every matching role has been marked. Use <code>jobhunt digest --all</code>
+       to see them again, or loosen <code>rules</code> in your config.</p>
   </div>"""
+
+
+def _closing_label(deadline: str | None) -> str:
+    """How long is left to apply, where the board says so at all."""
+    if not deadline:
+        return ""
+    try:
+        dt = datetime.fromisoformat(deadline)
+    except ValueError:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    days = (dt - datetime.now(timezone.utc)).days
+    if days < 0:
+        return "Closed"
+    if days == 0:
+        return "Closes today"
+    if days == 1:
+        return "Closes tomorrow"
+    return f"Closes in {days} days"

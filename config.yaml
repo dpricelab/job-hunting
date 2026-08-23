@@ -47,6 +47,10 @@ companies:
   url: https://jobs.oup.com/jobs/vacancy/find/results/
   source: generic
   token: https://jobs.oup.com/jobs/vacancy/find/results/
+- name: Cambridge University Press
+  url: https://careers.cambridge.org/jobs/vacancy/find/results/
+  source: generic
+  token: https://careers.cambridge.org/jobs/vacancy/find/results/
 rules:
   min_score: 4
   remote_only: false

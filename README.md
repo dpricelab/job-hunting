@@ -168,26 +168,75 @@ ID            SCORE  COMPANY         TITLE                     WHY
 
 ## Day to day
 
+The whole routine is two commands. Everything else is occasional.
+
 ```bash
-jobhunt fetch                      # refresh every board (runs 6 at a time)
-jobhunt list                       # what's matching, best first
-jobhunt list --status new          # not yet triaged
-jobhunt show 9f2a1c               # full detail for one role, by id prefix
-jobhunt mark 9f2a1c applied --note "referred by Sam"
-jobhunt digest --open              # new since last digest
-jobhunt digest --all --open        # rebuild the whole list
-jobhunt stats                      # pipeline summary
+jobhunt fetch                      # refresh every board (6 at a time)
+jobhunt digest --open              # what's new since last time
 ```
 
-`digest` shows only roles first seen since the previous digest, which is what
-makes it useful on a schedule. `--all` rebuilds everything, and `--no-mark`
-leaves the "last digest" marker alone so the next run still counts them as new.
+Then, for anything you act on:
 
-Statuses are `new`, `seen`, `applied` and `ignored`, and they survive
-re-fetching — marking something `applied` keeps it that way even as the posting
-is refreshed.
+```bash
+jobhunt mark 9f2a1c applied --note "referred by Sam"
+jobhunt mark a39a15 ignored
+```
+
+Marking matters more than it looks. Statuses survive re-fetching, so a role
+you have applied to stays marked as the posting is refreshed, and
+`--status new` keeps meaning "not yet triaged" rather than "everything".
+
+### Looking around
+
+```bash
+jobhunt list                       # matching roles, best first
+jobhunt list --status new          # not yet triaged
+jobhunt list --company Wiley       # one source
+jobhunt show 9f2a1c                # one role in full, by id prefix
+jobhunt stats                      # pipeline summary
+jobhunt digest --all --open        # rebuild the full list, not just new
+```
+
+### Why didn't I see that job?
+
+```bash
+jobhunt list --rejected                    # everything filtered out, and why
+jobhunt list --reason location             # only one kind of rejection
+jobhunt departments --company Informa      # what a broad board is tagged with
+```
+
+### Changing the rules
+
+Edit `config.yaml`, then re-apply to what you already have — no re-fetch:
+
+```bash
+jobhunt rescore
+```
+
+### Changing the sources
+
+```bash
+jobhunt add https://example.com/careers    # detects the board behind it
+jobhunt resolve                            # re-detect generic ones
+jobhunt remove "Royal Society"             # stop watching; --purge drops its data
+jobhunt companies                          # what is being watched
+```
+
+### When a source looks wrong
+
+Each probe explains one class of failure rather than leaving you guessing:
+
+```bash
+python tools/probe_generic.py "Sage"                  # why a page yielded what it did
+python tools/probe_workday.py Elsevier                # paging and field names
+python tools/probe_smartrecruiters.py "Taylor & Francis" editor
+```
 
 ### Running it on a schedule
+
+`digest` shows only roles first seen since the previous digest, which is what
+makes it useful unattended. `--all` rebuilds everything, and `--no-mark` leaves
+the marker alone so the next run still counts them as new.
 
 A weekday-morning cron entry:
 
@@ -195,7 +244,8 @@ A weekday-morning cron entry:
 0 8 * * 1-5 cd ~/job-hunting && .venv/bin/jobhunt fetch && .venv/bin/jobhunt digest
 ```
 
-Then open `out/digest.html` with your coffee.
+On Windows, use Task Scheduler to run a batch file containing the same two
+commands. Then open `out/digest.html` with your coffee.
 
 ## How it behaves
 
@@ -225,8 +275,9 @@ jobhunt/
     ats.py          Greenhouse, Lever, Ashby, SmartRecruiters, Recruitee,
                     Workable, Workday, Personio, plus embedded-board sniffing
     feeds.py        RSS and Atom
-    generic.py      JSON-LD and link heuristics
-tests/              118 tests, no network access required
+    generic.py      JSON-LD, embedded framework payloads, link heuristics
+tools/              probes that explain why a source returned what it did
+tests/              185 tests, no network access required
 ```
 
 ## Tests

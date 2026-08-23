@@ -65,15 +65,26 @@ rules:
   - re:\bcopy[- ]?desk\b
   - re:\bassistants?\b
   - re:\bcoordinators?\b
+  # Prefixes rather than whole words, so Oxford also catches Oxfordshire and
+  # Abingdon catches "Abingdon on Thames" — where Taylor & Francis actually
+  # edit their journals.
   location_include:
   - London
+  - re:\boxford
+  - re:\babingdon
+  - re:\bcambridge
   - re:\bremote\b[^a-z]*\b(uk|gbr|united kingdom|england|britain|europe|emea)\b
   - re:\b(uk|gbr|united kingdom|england|britain)\b[^a-z]*\bremote\b
   - re:^\s*remote\s*$
+
   location_exclude:
   - United States
   - USA
-  - re:(?-i:\bUS\b)
+  # Boards put the country last as a code, lower case on SmartRecruiters:
+  # "Newton, MA, us". Anything ending in a two-letter code that is not GB or
+  # UK is abroad. This is what keeps Cambridge, Massachusetts and Oxford,
+  # Mississippi out now that those city names are wanted.
+  - re:,\s*(?!gb\b|uk\b)[a-z]{2}\s*$
   exclude_keywords: []
   keywords:
     re:\bpublisher\b: 6

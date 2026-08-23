@@ -1,4 +1,5 @@
 import io
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -46,6 +47,81 @@ class UtilTests(unittest.TestCase):
         self.assertEqual(slugify("Ünïcode Ltd"), "unicode-ltd")
         self.assertEqual(truncate("abcdefghij", 5), "abcd…")
         self.assertEqual(truncate("short", 20), "short")
+
+
+class _EncodedStream:
+    """A stdout stand-in reporting a given encoding.
+
+    Not a StringIO subclass: `encoding` is read-only on the io types.
+    """
+
+    def __init__(self, encoding: str):
+        self.encoding = encoding
+        self._chunks: list[str] = []
+
+    def write(self, text: str) -> int:
+        self._chunks.append(text)
+        return len(text)
+
+    def flush(self) -> None:
+        pass
+
+    def isatty(self) -> bool:
+        return False
+
+    def getvalue(self) -> str:
+        return "".join(self._chunks)
+
+
+class OutputEncodingTests(unittest.TestCase):
+    """Printing must survive a terminal that cannot represent the symbols.
+
+    Redirecting output to a file on Windows drops stdout to a legacy code
+    page, which cannot encode the tick this CLI prints on success. That
+    crashed the whole run partway through a fetch.
+    """
+
+    def setUp(self):
+        from jobhunt import cli
+
+        self.cli = cli
+        self._saved = dict(cli.SYM)
+        self._stdout = sys.stdout
+
+    def tearDown(self):
+        sys.stdout = self._stdout
+        self.cli.SYM.clear()
+        self.cli.SYM.update(self._saved)
+
+    def configure_with(self, encoding: str):
+        sys.stdout = _EncodedStream(encoding)
+        self.cli._configure_output()
+
+    def test_legacy_code_page_falls_back_to_ascii(self):
+        self.configure_with("cp1252")
+        self.assertEqual(self.cli.SYM["ok"], "OK")
+        self.assertEqual(self.cli.SYM["fail"], "X")
+
+    def test_utf8_keeps_the_nicer_symbols(self):
+        self.configure_with("utf-8")
+        self.assertEqual(self.cli.SYM["ok"], "✓")
+
+    def test_every_fallback_symbol_is_ascii(self):
+        self.configure_with("cp1252")
+        for key, value in self.cli.SYM.items():
+            with self.subTest(symbol=key):
+                value.encode("ascii")  # raises if it is not
+
+    def test_an_unknown_encoding_does_not_raise(self):
+        self.configure_with("not-a-real-encoding")
+        self.assertEqual(self.cli.SYM["ok"], "OK")
+
+    def test_every_symbol_survives_the_reported_encoding(self):
+        # The guarantee that matters: whatever is chosen must be printable.
+        for encoding in ("cp1252", "ascii", "utf-8"):
+            with self.subTest(encoding=encoding):
+                self.configure_with(encoding)
+                "".join(self.cli.SYM.values()).encode(encoding)
 
 
 class NameInferenceTests(unittest.TestCase):

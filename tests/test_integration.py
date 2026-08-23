@@ -370,7 +370,10 @@ class ResolveTests(unittest.TestCase):
         self.write_config()
         code, out = self.run_cli("resolve")
         self.assertEqual(code, 0, out)
-        self.assertIn("generic → greenhouse", out.replace("\x1b[1m", "").replace("\x1b[0m", ""))
+        # Asserted without the arrow between them: which character separates
+        # the two depends on what the output encoding can represent.
+        plain = out.replace("\x1b[1m", "").replace("\x1b[0m", "")
+        self.assertRegex(plain, r"generic\s*\S*\s*greenhouse")
 
         config = Config.load(self.config)
         self.assertEqual(config.companies[0].source, "greenhouse")

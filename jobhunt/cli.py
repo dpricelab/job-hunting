@@ -100,6 +100,62 @@ def yellow(t: str) -> str:
     return _c(t, "33")
 
 
+# Output symbols. Windows falls back to a legacy code page when stdout is
+# redirected to a file, and cannot encode any of the nicer characters, so an
+# ASCII set stands in there rather than crashing the run.
+_FANCY = {
+    "ok": "✓",
+    "fail": "✗",
+    "skip": "–",
+    "warn": "!",
+    "dot": "·",
+    "dash": "—",
+    "arrow": "→",
+    "ellipsis": "…",
+    "bullet": "•",
+    "rule": "─",
+}
+_ASCII = {
+    "ok": "OK",
+    "fail": "X",
+    "skip": "-",
+    "warn": "!",
+    "dot": "|",
+    "dash": "-",
+    "arrow": "->",
+    "ellipsis": "...",
+    "bullet": "*",
+    "rule": "-",
+}
+
+# Mutated in place by _configure_output so callers can read it at call time.
+SYM = dict(_FANCY)
+
+
+def _configure_output() -> None:
+    """Make printing safe whatever the terminal encoding is.
+
+    Two separate problems: characters this CLI prints deliberately, handled by
+    swapping in the ASCII set, and characters it cannot predict — an accented
+    name in a job title — handled by replacing rather than raising.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+    encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+    try:
+        "".join(_FANCY.values()).encode(encoding)
+    except (UnicodeEncodeError, LookupError):
+        SYM.update(_ASCII)
+    else:
+        # Set rather than merely leave alone, so the result reflects the
+        # current stream whatever it was set to before.
+        SYM.update(_FANCY)
+
+
 def _fmt_score(value) -> str:
     value = float(value or 0)
     return str(int(value)) if value.is_integer() else f"{value:.1f}"
@@ -118,7 +174,7 @@ def _table(headers: list[str], rows: list[list[str]], max_widths: list[int] | No
     def line(cells: list[str], style=lambda s: s) -> str:
         out = []
         for i, cell in enumerate(cells):
-            clipped = cell if len(cell) <= widths[i] else cell[: widths[i] - 1] + "…"
+            clipped = cell if len(cell) <= widths[i] else cell[: widths[i] - 1] + SYM["ellipsis"]
             out.append(style(clipped.ljust(widths[i])))
         return "  ".join(out).rstrip()
 
@@ -187,20 +243,20 @@ def cmd_add(args) -> int:
         token = sources.get(source_name).detect(args.url) or args.url
         sniffed = False
     else:
-        print(dim(f"Inspecting {args.url} …"))
+        print(dim(f"Inspecting {args.url} {SYM['ellipsis']}"))
         source_name, token, sniffed = sources.resolve(args.url, sniff=not args.no_sniff)
 
     name = args.name or _suggest_name(args.url, token)
     company = Company(name=name, url=args.url, source=source_name, token=token)
 
     note = " (found embedded in the page)" if sniffed else ""
-    print(f"Board: {bold(source_name)} · token {bold(token)}{note}")
+    print(f"Board: {bold(source_name)} {SYM['dot']} token {bold(token)}{note}")
 
     if source_name == "generic":
         print(
             yellow(
                 "No known job board detected. Falling back to reading the page itself, "
-                "which is best-effort — check the results below."
+                "which is best-effort - check the results below."
             )
         )
 
@@ -214,10 +270,10 @@ def cmd_add(args) -> int:
 
         print(f"Found {bold(str(len(jobs)))} open roles.")
         for job in jobs[:5]:
-            location = f" — {job.location}" if job.location else ""
-            print(dim(f"  • {truncate(job.title, 70)}{location}"))
+            location = f" {SYM['dash']} {job.location}" if job.location else ""
+            print(dim(f"  {SYM['bullet']} {truncate(job.title, 70)}{location}"))
         if len(jobs) > 5:
-            print(dim(f"  … and {len(jobs) - 5} more"))
+            print(dim(f"  {SYM['ellipsis']} and {len(jobs) - 5} more"))
         if not jobs:
             print(
                 yellow(
@@ -295,7 +351,7 @@ def cmd_resolve(args) -> int:
             targets = [c for c in targets if c.source in ("", "auto", "generic")]
 
     if not targets:
-        print("Nothing to resolve — every company already has a known board.")
+        print("Nothing to resolve - every company already has a known board.")
         print(dim("Use --all to re-check them anyway."))
         return 0
 
@@ -309,7 +365,7 @@ def cmd_resolve(args) -> int:
             # fetched, so never downgrade a company that already has a working
             # board — a network blip would otherwise wipe the whole config.
             if before[0] in ("", "auto", "generic"):
-                print(f"  {yellow('–')} {company.name}: no board found, still generic")
+                print(f"  {yellow(SYM['skip'])} {company.name}: no board found, still generic")
                 print(
                     dim(
                         "     The page may render its jobs with JavaScript, or it may "
@@ -319,7 +375,7 @@ def cmd_resolve(args) -> int:
                 )
             else:
                 print(
-                    f"  {yellow('!')} {company.name}: could not confirm its "
+                    f"  {yellow(SYM['warn'])} {company.name}: could not confirm its "
                     f"{before[0]} board just now; leaving it as is"
                 )
             continue
@@ -329,9 +385,12 @@ def cmd_resolve(args) -> int:
             changed += 1
             note = " (found embedded in the page)" if sniffed else ""
             origin = before[0] or "auto"
-            print(f"  {green('✓')} {company.name}: {origin} → {bold(name)} · {token}{note}")
+            print(
+                f"  {green(SYM['ok'])} {company.name}: {origin} {SYM['arrow']} "
+                f"{bold(name)} {SYM['dot']} {token}{note}"
+            )
         else:
-            print(f"  {dim('–')} {company.name}: unchanged ({name})")
+            print(f"  {dim(SYM['skip'])} {company.name}: unchanged ({name})")
 
     if changed:
         config.save()
@@ -364,7 +423,10 @@ def cmd_fetch(args) -> int:
         except Exception as exc:  # a bad board should not sink the whole run
             return FetchResult(company.name, [], f"{type(exc).__name__}: {exc}")
 
-    print(f"Fetching {len(targets)} {'board' if len(targets) == 1 else 'boards'} …\n")
+    print(
+        f"Fetching {len(targets)} {'board' if len(targets) == 1 else 'boards'} "
+        f"{SYM['ellipsis']}\n"
+    )
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
         results = list(pool.map(run, targets))
 
@@ -374,7 +436,7 @@ def cmd_fetch(args) -> int:
         for result in results:
             if not result.ok:
                 failures += 1
-                print(f"  {red('✗')} {result.company}: {result.error}")
+                print(f"  {red(SYM['fail'])} {result.company}: {result.error}")
                 continue
 
             scored = [(job, score_job(job, config.rules)) for job in result.jobs]
@@ -389,7 +451,7 @@ def cmd_fetch(args) -> int:
                 detail += f", {green(str(stats.new) + ' new')}"
             if stats.closed:
                 detail += dim(f", {stats.closed} closed")
-            print(f"  {green('✓')} {result.company}: {detail}")
+            print(f"  {green(SYM['ok'])} {result.company}: {detail}")
 
         store.meta_set("last_fetch_at", now_iso())
 
@@ -440,7 +502,7 @@ def cmd_list(args) -> int:
                 [12, 5, 22, 46, 24, 5, 40],
             )
         )
-        print(dim(f"\n{len(rows)} shown · open one with `jobhunt show <id>`"))
+        print(dim(f"\n{len(rows)} shown {SYM['dot']} open one with `jobhunt show <id>`"))
     return 0
 
 
@@ -453,7 +515,7 @@ def cmd_show(args) -> int:
         if len(matches) > 1:
             print(yellow(f"{len(matches)} jobs match that prefix:"))
             for row in matches:
-                print(f"  {row['uid']}  {row['company']} — {row['title']}")
+                print(f"  {row['uid']}  {row['company']} {SYM['dash']} {row['title']}")
             return 1
 
         row = matches[0]
@@ -463,7 +525,7 @@ def cmd_show(args) -> int:
             matched = []
 
         print(bold(row["title"]))
-        print(f"{row['company']}  ·  {row['location'] or 'location not stated'}")
+        print(f"{row['company']}  {SYM['dot']}  {row['location'] or 'location not stated'}")
         print(row["url"])
         print()
         print(f"{'Score':<12} {_fmt_score(row['score'])}  ({', '.join(matched) or 'no keyword hits'})")
@@ -482,7 +544,7 @@ def cmd_show(args) -> int:
             print(f"{'Note':<12} {row['note']}")
 
         if row["description"]:
-            print("\n" + dim("─" * 60))
+            print("\n" + dim(SYM["rule"] * 60))
             body = row["description"]
             print(body if args.full else truncate(body, 1500))
     return 0
@@ -502,7 +564,7 @@ def cmd_mark(args) -> int:
         store.set_status(row["uid"], args.status)
         if args.note:
             store.set_note(row["uid"], args.note)
-        print(f"{row['company']} — {row['title']} → {green(args.status)}")
+        print(f"{row['company']} {SYM['dash']} {row['title']} {SYM['arrow']} {green(args.status)}")
     return 0
 
 
@@ -526,7 +588,7 @@ def cmd_digest(args) -> int:
             scope = f"new since {since[:10]}"
         else:
             scope = "all matching roles"
-        subtitle = f"{len(rows)} {'role' if len(rows) == 1 else 'roles'} · {scope}"
+        subtitle = f"{len(rows)} {'role' if len(rows) == 1 else 'roles'} {SYM['dot']} {scope}"
 
         html = render_digest(rows, subtitle=subtitle)
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -535,7 +597,7 @@ def cmd_digest(args) -> int:
         if not args.no_mark:
             store.meta_set("last_digest_at", now_iso())
 
-    print(f"Wrote {green(str(out))} — {subtitle}")
+    print(f"Wrote {green(str(out))} {SYM['dash']} {subtitle}")
     if not rows and not args.all:
         print(dim("Nothing new since the last digest. Use --all to rebuild the full list."))
 
@@ -556,7 +618,7 @@ def cmd_rescore(args) -> int:
             if verdict.kept and not row["closed_at"]:
                 kept += 1
 
-    print(f"Rescored {len(rows)} stored roles · {kept} now match your rules")
+    print(f"Rescored {len(rows)} stored roles {SYM['dot']} {kept} now match your rules")
     return 0
 
 
@@ -693,6 +755,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_output()
     parser = build_parser()
     args = parser.parse_args(argv)
     try:

@@ -65,6 +65,10 @@ rules:
   - re:\bcopy[- ]?desk\b
   - re:\bassistants?\b
   - re:\bcoordinators?\b
+  # Above the level being aimed at. Catches "Chief Editor" and
+  # "Editor-in-Chief" alike, since hyphens count as word boundaries.
+  - chief
+
   # London, remote, and the Oxford–Cambridge axis where most UK scholarly
   # publishing actually sits. Matched as prefixes so Oxford also covers
   # Oxfordshire, and Abingdon covers "Abingdon on Thames" — the exact string

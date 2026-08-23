@@ -558,7 +558,8 @@ def cmd_list(args) -> int:
             status=args.status,
             company=args.company,
             min_score=args.min_score,
-            rejected=args.rejected,
+            rejected=args.rejected or bool(args.reason),
+            reason=args.reason,
             include_closed=args.include_closed,
             limit=args.limit,
         )
@@ -578,11 +579,11 @@ def cmd_list(args) -> int:
                     row["title"],
                     row["location"] or ("Remote" if row["remote"] else ""),
                     human_age(row["posted_at"]),
-                    reason if args.rejected else row["status"],
+                    reason if (args.rejected or args.reason) else row["status"],
                 ]
             )
 
-        header_last = "WHY" if args.rejected else "STATUS"
+        header_last = "WHY" if (args.rejected or args.reason) else "STATUS"
         print(
             _table(
                 ["ID", "SCORE", "COMPANY", "TITLE", "LOCATION", "AGE", header_last],
@@ -811,6 +812,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--min-score", type=float)
     p.add_argument("--limit", type=int, default=40)
     p.add_argument("--rejected", action="store_true", help="show what was filtered out, and why")
+    p.add_argument(
+        "--reason",
+        help="only rejections whose reason contains this, e.g. 'location' (implies --rejected)",
+    )
     p.add_argument("--include-closed", action="store_true", help="include delisted roles")
     p.set_defaults(func=cmd_list)
 

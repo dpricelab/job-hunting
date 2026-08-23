@@ -206,6 +206,7 @@ class Store:
         company: str | None = None,
         min_score: float | None = None,
         rejected: bool = False,
+        reason: str | None = None,
         include_closed: bool = False,
         since: str | None = None,
         limit: int | None = None,
@@ -214,6 +215,9 @@ class Store:
         params: list = []
 
         where.append("rejected IS NOT NULL" if rejected else "rejected IS NULL")
+        if reason:
+            where.append("rejected LIKE ?")
+            params.append(f"%{reason}%")
         if not include_closed:
             where.append("closed_at IS NULL")
         if status:

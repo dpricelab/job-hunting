@@ -53,6 +53,10 @@ companies:
   source: generic
   token: https://careers.cambridge.org/jobs/vacancy/find/results/
   enabled: false
+- name: CharityJob (editorial)
+  url: https://www.charityjob.co.uk/editorial-jobs
+  source: generic
+  token: https://www.charityjob.co.uk/editorial-jobs
 rules:
   min_score: 4
   remote_only: false

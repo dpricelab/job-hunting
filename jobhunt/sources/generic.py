@@ -108,8 +108,15 @@ EMBEDDED_STATE_PATTERNS: list[tuple[str, re.Pattern, bool]] = [
 
 TITLE_KEYS = ("title", "job_title", "jobTitle", "position", "role_name", "name")
 URL_KEYS = ("url", "link", "permalink", "apply_url", "job_url", "href")
-SLUG_KEYS = ("slug", "path", "reference", "ref")
-ID_KEYS = ("id", "uuid", "job_id", "reference", "ref", "slug")
+SLUG_KEYS = ("shortcode", "slug", "path", "reference", "ref")
+ID_KEYS = ("id", "uuid", "job_id", "shortcode", "reference", "ref", "slug")
+
+# An opaque token rather than anything a person wrote: Redwood stores its
+# locations as codes like "ERSQLYRF4M" that point at a record elsewhere in the
+# payload. Blanking one that cannot be resolved is deliberate — an unknown
+# location still passes the location rules, whereas a code never matches
+# anywhere and would silently bin the posting.
+OPAQUE_CODE_RE = re.compile(r"^[A-Z0-9]{6,16}$")
 LOCATION_KEYS = ("location", "city", "town", "region", "place", "office", "locations")
 DESCRIPTION_KEYS = ("description", "summary", "excerpt", "content", "body", "intro")
 DATE_KEYS = ("published_at", "posted_at", "created_at", "date", "live_from")
@@ -128,13 +135,71 @@ def find_embedded_state(html: str):
                 continue  # Nuxt and Remix sometimes emit JS, not JSON
 
 
+def _has_detail(entry: dict) -> bool:
+    return any(
+        _first_value(entry, keys) is not None
+        for keys in (LOCATION_KEYS, DESCRIPTION_KEYS, DATE_KEYS, DETAIL_KEYS)
+    )
+
+
+def _array_score(entries: list[dict]) -> tuple[int, int]:
+    """Rank candidate arrays by how posting-like they are, then by size.
+
+    Size alone is not enough: a lookup table of locations carries a name and
+    an identifier on every row, so it qualifies as job-like and can be longer
+    than the listings it serves. Real postings carry detail — a description,
+    a date, a salary — that a lookup row does not.
+    """
+    return (sum(1 for entry in entries if _has_detail(entry)), len(entries))
+
+
 def _from_embedded_state(html: str, page_url: str, company: str) -> list[Job]:
     best: list[dict] = []
+    best_score = (0, 0)
+    index: dict[str, str] = {}
+
     for _label, payload in find_embedded_state(html):
         for candidate in _candidate_arrays(payload):
-            if len(candidate) > len(best):
+            score = _array_score(candidate)
+            if score > best_score:
+                best_score = score
                 best = candidate
-    return [_job_from_mapping(entry, page_url, company) for entry in best]
+                index = _reference_index(payload)
+
+    return [_job_from_mapping(entry, page_url, company, index) for entry in best]
+
+
+def _reference_index(payload, depth: int = 0, index: dict | None = None) -> dict[str, str]:
+    """Map opaque codes to the names they stand for.
+
+    Payloads often normalise their data, storing a location as a code and the
+    readable name in a separate list. This collects any record carrying both
+    so those references can be resolved.
+    """
+    if index is None:
+        index = {}
+    if depth > 8:
+        return index
+
+    if isinstance(payload, list):
+        for item in payload:
+            _reference_index(item, depth + 1, index)
+    elif isinstance(payload, dict):
+        name = ""
+        for key in ("name", "title", "label", "city"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                name = value.strip()
+                break
+        if name:
+            for key in ("shortcode", "code", "id", "uuid", "slug", "reference"):
+                value = payload.get(key)
+                if isinstance(value, str) and OPAQUE_CODE_RE.match(value):
+                    index.setdefault(value, name)
+        for value in payload.values():
+            _reference_index(value, depth + 1, index)
+
+    return index
 
 
 def _candidate_arrays(node, depth: int = 0):
@@ -218,7 +283,9 @@ def _flatten(value) -> str:
     return str(value)
 
 
-def _job_from_mapping(entry: dict, page_url: str, company: str) -> Job:
+def _job_from_mapping(
+    entry: dict, page_url: str, company: str, index: dict[str, str] | None = None
+) -> Job:
     title = str(_first_value(entry, TITLE_KEYS) or "").strip()
 
     url = _first_value(entry, URL_KEYS)
@@ -231,7 +298,10 @@ def _job_from_mapping(entry: dict, page_url: str, company: str) -> Job:
         absolute = urljoin(page_url.rstrip("/") + "/", str(slug)) if slug else page_url
 
     identifier = _first_value(entry, ID_KEYS)
-    location = _flatten(_first_value(entry, LOCATION_KEYS))
+
+    location = _flatten(_first_value(entry, LOCATION_KEYS)).strip()
+    if OPAQUE_CODE_RE.match(location):
+        location = (index or {}).get(location, "")
 
     return Job(
         source="embedded",

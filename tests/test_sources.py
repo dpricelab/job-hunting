@@ -420,6 +420,79 @@ class EmbeddedStateTests(unittest.TestCase):
         payload = {"props": {"thing": [{"id": 1, "title": "Lone Item", "slug": "x"}]}}
         self.assertEqual(self.extract(payload), [])
 
+    def test_a_location_stored_as_a_code_is_resolved(self):
+        # Redwood's real shape: the posting names a code, and the readable
+        # place sits in a separate list.
+        payload = {
+            "props": {
+                "locations": [
+                    {"shortcode": "ERSQLYRF4M", "name": "London"},
+                    {"shortcode": "FWBEDGYBZQ", "name": "Oxford"},
+                ],
+                "vacancies": [
+                    {"id": 1, "title": "Commissioning Editor", "location": "ERSQLYRF4M"},
+                    {"id": 2, "title": "Journals Manager", "location": "FWBEDGYBZQ"},
+                ],
+            }
+        }
+        jobs = {j.title: j for j in self.extract(payload)}
+        self.assertEqual(jobs["Commissioning Editor"].location, "London")
+        self.assertEqual(jobs["Journals Manager"].location, "Oxford")
+
+    def test_an_unresolvable_code_becomes_no_location(self):
+        # Left as a code it would match no location rule and bin the posting;
+        # blank means "unknown", which still passes.
+        payload = {
+            "props": {
+                "vacancies": [
+                    {"id": 1, "title": "Commissioning Editor", "location": "ERSQLYRF4M"},
+                    {"id": 2, "title": "Journals Manager", "location": "DEKPFNRBXH"},
+                ]
+            }
+        }
+        for job in self.extract(payload):
+            self.assertEqual(job.location, "")
+
+    def test_real_place_names_are_untouched(self):
+        payload = {
+            "props": {
+                "vacancies": [
+                    {"id": 1, "title": "Commissioning Editor", "location": "London, UK"},
+                    {"id": 2, "title": "Journals Manager", "location": "Oxford"},
+                ]
+            }
+        }
+        self.assertEqual(
+            sorted(j.location for j in self.extract(payload)), ["London, UK", "Oxford"]
+        )
+
+    def test_shortcode_becomes_the_posting_url(self):
+        payload = {
+            "props": {
+                "vacancies": [
+                    {"id": 914889, "title": "Commissioning Editor", "shortcode": "UGWL85DIFO"},
+                    {"id": 901637, "title": "Journals Manager", "shortcode": "3U7W7XHKEK"},
+                ]
+            }
+        }
+        jobs = {j.title: j for j in self.extract(payload)}
+        self.assertEqual(
+            jobs["Commissioning Editor"].url,
+            "https://agency.example/vacancies/UGWL85DIFO",
+        )
+
+    def test_postings_keep_distinct_identities(self):
+        payload = {
+            "props": {
+                "vacancies": [
+                    {"id": 914889, "title": "Editor", "shortcode": "AAA111", "location": "X1Y2Z3A4"},
+                    {"id": 901637, "title": "Editor", "shortcode": "BBB222", "location": "X1Y2Z3A4"},
+                ]
+            }
+        }
+        jobs = self.extract(payload)
+        self.assertEqual(len({j.uid for j in jobs}), 2)
+
     def test_malformed_payloads_do_not_raise(self):
         html = '<html><body><div data-page="{not valid json' + "x" * 250 + '"></div></body></html>'
         self.assertEqual(generic._from_embedded_state(html, "https://x.example/", "A"), [])

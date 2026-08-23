@@ -169,6 +169,20 @@ class Store:
         """Every stored row, closed and rejected ones included."""
         return self.conn.execute("SELECT * FROM jobs").fetchall()
 
+    def count_for_company(self, company: str) -> int:
+        """Exact-name count. Deliberately not the LIKE match `query` uses, so
+        'Royal Society' cannot be confused with 'Royal Society of Chemistry'."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM jobs WHERE company = ?", (company,)
+        ).fetchone()
+        return row["n"] or 0
+
+    def delete_company(self, company: str) -> int:
+        """Forget every posting stored for one company. Exact name only."""
+        cursor = self.conn.execute("DELETE FROM jobs WHERE company = ?", (company,))
+        self.conn.commit()
+        return cursor.rowcount or 0
+
     def set_status(self, uid: str, status: str) -> bool:
         if status not in USER_STATUSES:
             raise ValueError(f"unknown status {status!r}; expected one of {USER_STATUSES}")

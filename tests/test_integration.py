@@ -302,6 +302,97 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(code, 0)  # one board failed, the other did not
 
 
+class RemoveTests(unittest.TestCase):
+    """Dropping a source, including the near-miss names that make it risky."""
+
+    CONFIG = (
+        "companies:\n"
+        "  - {name: Royal Society, url: 'https://rs.example/jobs', source: generic}\n"
+        "  - {name: Royal Society of Chemistry, url: 'https://rsc.example/jobs', source: generic}\n"
+        "  - {name: Wiley, url: 'https://wiley.example/jobs', source: generic}\n"
+        "rules:\n  min_score: 0\n"
+    )
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.config = self.base / "config.yaml"
+        self.data = self.base / "data"
+        self.config.write_text(self.CONFIG, encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_cli(self, *argv) -> tuple[int, str]:
+        buffer = io.StringIO()
+        args = ["--config", str(self.config), "--data-dir", str(self.data), *argv]
+        with redirect_stdout(buffer):
+            code = main(args)
+        return code, buffer.getvalue()
+
+    def seed(self):
+        from jobhunt.models import Job
+        from jobhunt.scoring import Verdict
+
+        with Store(self.data / "jobs.db") as store:
+            store.upsert(
+                [
+                    (
+                        Job(
+                            source="generic",
+                            company=name,
+                            title=f"{name} Editor",
+                            url=f"https://x/{i}",
+                            external_id=str(i),
+                        ),
+                        Verdict(score=5),
+                    )
+                    for i, name in enumerate(["Royal Society", "Royal Society of Chemistry"])
+                ]
+            )
+
+    def names(self) -> list[str]:
+        return [c.name for c in Config.load(self.config).companies]
+
+    def test_removes_the_named_company(self):
+        code, out = self.run_cli("remove", "Wiley")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("Wiley", self.names())
+        self.assertEqual(len(self.names()), 2)
+
+    def test_an_exact_name_wins_over_a_longer_one_containing_it(self):
+        # "Royal Society" is a substring of "Royal Society of Chemistry".
+        code, out = self.run_cli("remove", "Royal Society")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.names(), ["Royal Society of Chemistry", "Wiley"])
+
+    def test_an_ambiguous_partial_name_is_refused(self):
+        code, out = self.run_cli("remove", "Royal")
+        self.assertEqual(code, 1)
+        self.assertIn("more than one", out)
+        self.assertEqual(len(self.names()), 3)  # nothing removed
+
+    def test_an_unknown_name_is_an_error(self):
+        code, out = self.run_cli("remove", "Elsevier")
+        self.assertEqual(code, 1)
+        self.assertIn("No configured company", out)
+
+    def test_collected_postings_are_kept_by_default(self):
+        self.seed()
+        self.run_cli("remove", "Royal Society")
+        with Store(self.data / "jobs.db") as store:
+            self.assertEqual(store.count_for_company("Royal Society"), 1)
+
+    def test_purge_deletes_only_that_company(self):
+        self.seed()
+        code, out = self.run_cli("remove", "Royal Society", "--purge")
+        self.assertEqual(code, 0, out)
+        with Store(self.data / "jobs.db") as store:
+            self.assertEqual(store.count_for_company("Royal Society"), 0)
+            # The similarly named company must be untouched.
+            self.assertEqual(store.count_for_company("Royal Society of Chemistry"), 1)
+
+
 class _CareersPageHandler(BaseHTTPRequestHandler):
     """A company careers page that embeds someone else's job board."""
 

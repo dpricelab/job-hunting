@@ -303,6 +303,50 @@ def _suggest_name(url: str, token: str) -> str:
     return _name_from_url(url)
 
 
+def cmd_remove(args) -> int:
+    """Stop watching a company.
+
+    Refuses an ambiguous name rather than guessing, since one company's name
+    is often a prefix of another's.
+    """
+    config = _load_config(args)
+    needle = args.company.strip().lower()
+
+    exact = [
+        c for c in config.companies if c.name.lower() == needle or c.url.lower() == needle
+    ]
+    matches = exact or [c for c in config.companies if needle in c.name.lower()]
+
+    if not matches:
+        print(red(f"No configured company matching {args.company!r}"))
+        return 1
+    if len(matches) > 1:
+        print(yellow(f"{args.company!r} matches more than one company:"))
+        for company in matches:
+            print(f"  - {company.name}")
+        print(dim("Give the full name to say which."))
+        return 1
+
+    company = matches[0]
+    config.companies.remove(company)
+    config.save()
+    print(f"Removed {green(company.name)} from {config.path}.")
+
+    with _store(args) as store:
+        stored = store.count_for_company(company.name)
+        if args.purge:
+            deleted = store.delete_company(company.name)
+            print(f"Deleted {deleted} collected postings.")
+        elif stored:
+            print(
+                dim(
+                    f"{stored} collected postings are still in the database and will "
+                    "no longer be refreshed. Re-run with --purge to delete them."
+                )
+            )
+    return 0
+
+
 def cmd_companies(args) -> int:
     config = _load_config(args)
     if not config.companies:
@@ -696,6 +740,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-sniff", action="store_true", help="do not fetch the page to detect its board")
     p.add_argument("--no-check", action="store_true", help="skip the test fetch")
     p.set_defaults(func=cmd_add)
+
+    p = sub.add_parser("remove", help="stop watching a company")
+    p.add_argument("company", help="name (or URL) of the company to drop")
+    p.add_argument(
+        "--purge", action="store_true", help="also delete its collected postings"
+    )
+    p.set_defaults(func=cmd_remove)
 
     p = sub.add_parser("companies", help="list configured companies")
     p.set_defaults(func=cmd_companies)

@@ -27,10 +27,6 @@ companies:
   url: https://www.alpsp.org/careers-hub/jobs-board/
   source: generic
   token: https://www.alpsp.org/careers-hub/jobs-board/
-- name: Royal Society
-  url: https://royalsociety.occupop-careers.com/
-  source: generic
-  token: https://royalsociety.occupop-careers.com/
 - name: BMJ
   url: https://jobsearch.bmj.com/
   source: generic
@@ -69,15 +65,11 @@ rules:
   - re:\bcopy[- ]?desk\b
   - re:\bassistants?\b
   - re:\bcoordinators?\b
-  # A bare "Remote" let in remote roles from anywhere: a Wiley Deputy Editor
-  # in "Remote, Maharashtra, IND" scored 15 and reached the digest. Remote is
-  # now only accepted when it names somewhere reachable, or names nowhere at
-  # all. Postings that state no location still pass, as ever.
   location_include:
   - London
-  - 're:\bremote\b[^a-z]*\b(uk|gbr|united kingdom|england|britain|europe|emea)\b'
-  - 're:\b(uk|gbr|united kingdom|england|britain)\b[^a-z]*\bremote\b'
-  - 're:^\s*remote\s*$'
+  - re:\bremote\b[^a-z]*\b(uk|gbr|united kingdom|england|britain|europe|emea)\b
+  - re:\b(uk|gbr|united kingdom|england|britain)\b[^a-z]*\bremote\b
+  - re:^\s*remote\s*$
   location_exclude:
   - United States
   - USA
@@ -89,8 +81,6 @@ rules:
     re:\b(managing|commissioning|senior|acquisitions|publishing)\s+editor\b: 5
     re:\beditor(ial)?\b: 3
     re:\bpeer[ -]review\s+manager\b: 5
-    # Gate words need weights too, or a title that only matches the gate
-    # scores nothing and is rejected by min_score anyway.
     re:\bhead\s+of\s+content\b: 5
     re:\bcontent\s+(director|lead|manager|strategist)\b: 4
     re:\bportfolio\s+(manager|director|lead|head)\b: 5

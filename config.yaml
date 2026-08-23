@@ -102,7 +102,7 @@ rules:
     re:\bhead\s+of\s+content\b: 5
     re:\bcontent\s+(director|lead|manager|strategist)\b: 4
     re:\bportfolio\s+(manager|director|lead|head)\b: 5
-    re:\bcontent\b: 2
+    re:\bcontent\b: 1
     re:\bpeer[ -]review: 2
     open access: 2
     scholarly: 2

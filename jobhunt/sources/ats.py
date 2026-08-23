@@ -450,7 +450,9 @@ def fetch_workday(token: str, company: str) -> list[Job]:
 
     base = f"{WORKDAY_SCHEME}://{host}/wday/cxs/{tenant}/{site}"
     postings: list[dict] = []
+    seen_keys: set[str] = set()
     offset = 0
+    total: int | None = None
 
     while offset < WORKDAY_MAX_JOBS:
         payload = post_json(
@@ -466,9 +468,30 @@ def fetch_workday(token: str, company: str) -> list[Job]:
         if not batch:
             break
 
-        postings.extend(batch)
+        # Workday reports the total on the first page only; every later page
+        # carries zero. Reading it each time ends paging after two pages, so
+        # keep the first real figure and judge against that.
+        reported = payload.get("total") or 0
+        if reported and total is None:
+            total = reported
+
+        fresh = []
+        for entry in batch:
+            key = entry.get("externalPath") or (
+                f"{entry.get('title')}|{entry.get('locationsText')}"
+            )
+            if key not in seen_keys:
+                seen_keys.add(key)
+                fresh.append(entry)
+
+        # Past the end, some boards serve their first page again rather than
+        # an empty one. Without this the loop would run to its hard limit.
+        if not fresh:
+            break
+
+        postings.extend(fresh)
         offset += len(batch)
-        if offset >= (payload.get("total") or 0):
+        if total and offset >= total:
             break
 
     pairs = [(entry, _workday_job(entry, host, site, locale, company)) for entry in postings]

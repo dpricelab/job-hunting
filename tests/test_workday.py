@@ -65,7 +65,20 @@ class _Handler(BaseHTTPRequestHandler):
 
         # Workday ignores any limit above 20.
         limit = min(limit, 20)
-        self._send({"total": len(POSTINGS), "jobPostings": POSTINGS[offset : offset + limit]})
+        batch = POSTINGS[offset : offset + limit]
+
+        # Faithful to the real API: the total is reported on the first page
+        # only, and later pages carry zero. Reading it every time is what
+        # truncated real boards to two pages.
+        total = len(POSTINGS) if offset == 0 else 0
+
+        # Past the end the board serves its first page again rather than an
+        # empty one, which is what the repeat guard exists to stop.
+        if not batch:
+            batch = POSTINGS[:limit]
+            total = len(POSTINGS)
+
+        self._send({"total": total, "jobPostings": batch})
 
     def do_GET(self):
         prefix = f"/wday/cxs/{TENANT}/{SITE}"
@@ -265,10 +278,20 @@ class WorkdayFetchTests(unittest.TestCase):
         _Handler.fail_details = False
 
     def test_pagination_collects_every_posting(self):
+        # 45 postings is three pages, so this fails if paging stops at the
+        # second page — which is what reading `total` from every page did.
         jobs = ats.fetch_workday(self.token, "Springer Nature")
         self.assertEqual(len(jobs), len(POSTINGS))
         self.assertEqual(jobs[0].title, "Role 0")
         self.assertEqual(jobs[-1].title, "Role 44")
+
+    def test_a_zero_total_on_later_pages_does_not_end_paging(self):
+        jobs = ats.fetch_workday(self.token, "Springer Nature")
+        self.assertGreater(len(jobs), 40)
+
+    def test_postings_are_not_collected_twice(self):
+        jobs = ats.fetch_workday(self.token, "Springer Nature")
+        self.assertEqual(len({job.uid for job in jobs}), len(jobs))
 
     def test_fields_are_mapped(self):
         job = ats.fetch_workday(self.token, "Springer Nature")[1]

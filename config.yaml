@@ -69,9 +69,15 @@ rules:
   - re:\bcopy[- ]?desk\b
   - re:\bassistants?\b
   - re:\bcoordinators?\b
+  # A bare "Remote" let in remote roles from anywhere: a Wiley Deputy Editor
+  # in "Remote, Maharashtra, IND" scored 15 and reached the digest. Remote is
+  # now only accepted when it names somewhere reachable, or names nowhere at
+  # all. Postings that state no location still pass, as ever.
   location_include:
   - London
-  - Remote
+  - 're:\bremote\b[^a-z]*\b(uk|gbr|united kingdom|england|britain|europe|emea)\b'
+  - 're:\b(uk|gbr|united kingdom|england|britain)\b[^a-z]*\bremote\b'
+  - 're:^\s*remote\s*$'
   location_exclude:
   - United States
   - USA

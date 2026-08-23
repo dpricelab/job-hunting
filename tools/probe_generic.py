@@ -17,6 +17,7 @@ Output is deliberately plain ASCII so it survives a redirect on Windows.
 from __future__ import annotations
 
 import sys
+from html import unescape
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -78,6 +79,34 @@ def main(argv: list[str]) -> int:
         print(f"    ... and {len(postings) - SHOW} more")
     print()
 
+    # -- embedded application state ---------------------------------------
+    # A page can be server-rendered yet still hide its listings inside a JSON
+    # blob meant for a JavaScript framework. That looks identical to an empty
+    # page from the link heuristics, but is very much readable.
+    state_patterns = [
+        ("Inertia.js (data-page)", r'data-page="([^"]{200,})"'),
+        ("Next.js (__NEXT_DATA__)", r'id="__NEXT_DATA__"[^>]*>(.{200,}?)</script>'),
+        ("Nuxt (window.__NUXT__)", r"window\.__NUXT__\s*=\s*(.{200,}?)</script>"),
+        ("Remix (__remixContext)", r"window\.__remixContext\s*=\s*(.{200,}?)</script>"),
+        ("Generic application/json", r'<script[^>]+type="application/json"[^>]*>(.{200,}?)</script>'),
+    ]
+
+    print("EMBEDDED APPLICATION STATE (listings hidden in a JSON payload)")
+    found_state = False
+    for label, pattern in state_patterns:
+        for match in generic.re.finditer(pattern, html, generic.re.DOTALL | generic.re.I):
+            # Inertia stores its payload in an attribute, so the JSON arrives
+            # entity-encoded and must be unescaped before it can be inspected.
+            blob = unescape(match.group(1))
+            found_state = True
+            titles = len(generic.re.findall(r'"(job_?title|title|position|role_?name)"\s*:', blob, generic.re.I))
+            print(f"  {label}: {len(blob):,} characters")
+            print(f"    title-like keys inside: {titles}")
+            break
+    if not found_state:
+        print("  none found")
+    print()
+
     # -- link heuristics --------------------------------------------------
     collector = generic._AnchorCollector()
     try:
@@ -135,6 +164,10 @@ def main(argv: list[str]) -> int:
     print("\nVERDICT")
     if postings:
         print("  Structured data was found and is what the reader uses.")
+    elif found_state:
+        print("  The listings are very likely inside the embedded JSON above,")
+        print("  which the reader does not currently look at. Readable, but it")
+        print("  needs support for that payload rather than a tweak.")
     elif kept:
         print("  No structured data; the reader is guessing from links above.")
     elif len(collector.anchors) < 10 and len(html) < 60000:

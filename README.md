@@ -32,9 +32,20 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 ```
 
-That puts a `jobhunt` command on your PATH. Without installing, `python3 -m
-jobhunt` works identically from the repo root. Requires Python 3.10+; the only
-dependencies are `requests` and `PyYAML`.
+On Windows the activation step differs, and the rest is the same:
+
+```bat
+python -m venv .venv
+.venv\Scripts\activate.bat        REM Command Prompt
+.venv\Scripts\Activate.ps1        REM PowerShell
+pip install -e .
+```
+
+That puts a `jobhunt` command on your PATH. If the shell reports it is not
+recognised — usually because the install landed outside an activated virtual
+environment — `python -m jobhunt` runs exactly the same code and does not
+depend on PATH at all. Requires Python 3.10+; the only dependencies are
+`requests` and `PyYAML`.
 
 ## Getting started
 

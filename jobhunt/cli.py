@@ -72,8 +72,41 @@ rules:
 # -- terminal helpers ------------------------------------------------------
 
 
+# Set by _configure_output, so the decision is made once, after the console
+# has had a chance to be put into a mode that understands colour.
+_COLOR = {"enabled": False}
+
+
+def _enable_ansi() -> bool:
+    """Ask a Windows console to interpret colour codes.
+
+    Windows consoles understand ANSI escapes but do not act on them unless
+    virtual terminal processing is switched on. Without this, cmd.exe prints
+    the escape sequences literally, which is worse than no colour at all.
+    Everywhere else there is nothing to do.
+    """
+    if os.name != "nt":
+        return True
+
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+
+        enable_vt = 0x0004
+        if mode.value & enable_vt:
+            return True
+        return bool(kernel32.SetConsoleMode(handle, mode.value | enable_vt))
+    except Exception:  # noqa: BLE001 - any failure just means no colour
+        return False
+
+
 def _use_color() -> bool:
-    return sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+    return _COLOR["enabled"]
 
 
 def _c(text: str, code: str) -> str:
@@ -144,6 +177,17 @@ def _configure_output() -> None:
             stream.reconfigure(errors="replace")
         except (AttributeError, ValueError, OSError):
             pass
+
+    # Colour only where it will actually be rendered: not into a file, not
+    # when NO_COLOR is set, and on Windows only once the console agrees to
+    # interpret the codes rather than print them.
+    try:
+        is_terminal = sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        is_terminal = False
+    _COLOR["enabled"] = (
+        is_terminal and not os.environ.get("NO_COLOR") and _enable_ansi()
+    )
 
     encoding = getattr(sys.stdout, "encoding", None) or "ascii"
     try:

@@ -97,6 +97,15 @@ class OutputEncodingTests(unittest.TestCase):
         sys.stdout = _EncodedStream(encoding)
         self.cli._configure_output()
 
+    def test_colour_is_off_when_output_is_not_a_terminal(self):
+        # Redirecting to a file must not litter it with escape sequences.
+        self.configure_with("utf-8")
+        self.assertFalse(self.cli._use_color())
+        self.assertEqual(self.cli.green("ok"), "ok")
+
+    def test_enabling_ansi_never_raises(self):
+        self.assertIn(self.cli._enable_ansi(), (True, False))
+
     def test_legacy_code_page_falls_back_to_ascii(self):
         self.configure_with("cp1252")
         self.assertEqual(self.cli.SYM["ok"], "OK")

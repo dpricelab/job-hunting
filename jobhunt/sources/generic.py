@@ -35,7 +35,17 @@ JOB_URL_ANTI_HINT = re.compile(
     r"accessibility|sitemap|newsletter|subscribe|"
     # Agency site furniture that reads like a posting: Redwood's "Your career"
     # and "Brief us on a role" were being collected as jobs.
-    r"submit[-_ ]?a[-_ ]?(vacancy|job|role)|your[-_ ]?career|post[-_ ]?a[-_ ]?(job|role))",
+    r"submit[-_ ]?a[-_ ]?(vacancy|job|role)|your[-_ ]?career|post[-_ ]?a[-_ ]?(job|role)|"
+    # Job boards carry accounts, advice and recruiter sections on job-like
+    # paths. Volunteer listings are not paid roles.
+    r"/account|/signin|/sign-in|/login|/register|/recruiters?|career[-_ ]?advice|"
+    r"/volunteer|/saved|/alerts?)",
+    re.I,
+)
+
+# Hosts that are somebody else's job board, worth following off-site.
+ATS_HOST_RE = re.compile(
+    r"(greenhouse|lever|ashby|workable|recruitee|smartrecruiters|personio|myworkdayjobs)",
     re.I,
 )
 NAV_TEXT = re.compile(
@@ -462,6 +472,39 @@ class _AnchorCollector(HTMLParser):
         self._buffer = []
 
 
+def link_rejection(href: str, text: str, page_url: str) -> tuple[str | None, str]:
+    """Why an anchor is not a posting, or None if it might be one.
+
+    Shared with the probe, so what it reports and what the reader does cannot
+    drift apart.
+    """
+    if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+        return "not a page link", ""
+    if NAV_TEXT.match(text):
+        return "link text looks like navigation", ""
+    if not (3 <= len(text) <= 120):
+        return "link text too short or too long", ""
+
+    absolute = urljoin(page_url, href)
+    parsed = urlparse(absolute)
+
+    # Match the path, never the host. charityjob.co.uk contains "job", so
+    # matching the whole URL made all 259 links on the page look like
+    # postings, "Log in" and "Career advice" among them.
+    path = parsed.path + (f"?{parsed.query}" if parsed.query else "")
+
+    if not JOB_URL_HINT.search(path):
+        return "URL has no job-like word in its path", absolute
+    if JOB_URL_ANTI_HINT.search(path):
+        return "URL is an excluded page (account, advice, policy, ...)", absolute
+    if absolute.rstrip("/") == page_url.rstrip("/"):
+        return "link points back at this page", absolute
+    if parsed.netloc != urlparse(page_url).netloc and not ATS_HOST_RE.search(parsed.netloc):
+        return "link leaves this site", absolute
+
+    return None, absolute
+
+
 def _from_anchors(html: str, page_url: str, company: str) -> list[Job]:
     collector = _AnchorCollector()
     try:
@@ -470,30 +513,12 @@ def _from_anchors(html: str, page_url: str, company: str) -> list[Job]:
     except Exception:  # malformed markup should not kill the run
         pass
 
-    page_host = urlparse(page_url).netloc
-    page_key = page_url.rstrip("/")
     jobs: list[Job] = []
     seen: set[str] = set()
 
     for href, text in collector.anchors:
-        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
-            continue
-        if NAV_TEXT.match(text) or not (3 <= len(text) <= 120):
-            continue
-
-        absolute = urljoin(page_url, href)
-        host = urlparse(absolute).netloc
-        if not JOB_URL_HINT.search(absolute) or JOB_URL_ANTI_HINT.search(absolute):
-            continue
-        # A link back to the careers page itself is navigation, not a posting.
-        if absolute.rstrip("/") == page_key:
-            continue
-        # Only same-site links, or links into a known ATS host.
-        if host != page_host and not re.search(
-            r"(greenhouse|lever|ashby|workable|recruitee|smartrecruiters|personio)", host, re.I
-        ):
-            continue
-        if absolute in seen:
+        reason, absolute = link_rejection(href, text, page_url)
+        if reason or absolute in seen:
             continue
         seen.add(absolute)
 

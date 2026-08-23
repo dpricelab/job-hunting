@@ -585,6 +585,48 @@ class AnchorFallbackTests(unittest.TestCase):
         jobs = generic._from_anchors(page, "https://example.com/current-assignments/", "Agency")
         self.assertEqual([job.title for job in jobs], ["Senior Publisher"])
 
+    def test_a_job_word_in_the_domain_does_not_match_every_link(self):
+        # charityjob.co.uk contains "job", so matching the whole URL made all
+        # 259 links on the page look like postings, "Log in" among them.
+        page = """
+        <html><body>
+          <a href="/careeradvice/">Career advice</a>
+          <a href="/recruiters">Are you recruiting?</a>
+          <a href="/account/signin?usertype=candidate">Log in</a>
+          <a href="/account/register?usertype=candidate">Sign up</a>
+          <a href="/volunteer-jobs/?source=nav">Volunteer</a>
+          <a href="/about-us">About us</a>
+          <a href="/jobs/12345/journals-manager">Journals Manager</a>
+          <a href="/jobs/67890/publications-editor">Publications Editor</a>
+        </body></html>
+        """
+        jobs = generic._from_anchors(
+            page, "https://www.charityjob.co.uk/editorial-jobs", "CharityJob"
+        )
+        self.assertEqual(
+            sorted(job.title for job in jobs), ["Journals Manager", "Publications Editor"]
+        )
+
+    def test_a_posting_on_a_job_named_domain_still_resolves(self):
+        page = '<a href="/job/1/managing-editor">Managing Editor</a>'
+        jobs = generic._from_anchors(page, "https://jobsearch.example.com/", "X")
+        self.assertEqual([job.title for job in jobs], ["Managing Editor"])
+
+    def test_rejection_reasons_are_reported_for_the_probe(self):
+        # A path with a job word in it, excluded on its own merits.
+        reason, _ = generic.link_rejection("/volunteer-jobs/", "Volunteer", "https://x.com/jobs")
+        self.assertIn("excluded page", reason)
+        # No job word at all is caught earlier, and reported differently.
+        reason, _ = generic.link_rejection("/account/signin", "Log in", "https://x.com/jobs")
+        self.assertIn("no job-like word", reason)
+        reason, _ = generic.link_rejection("/about", "About us", "https://x.com/jobs")
+        self.assertIn("no job-like word", reason)
+        reason, absolute = generic.link_rejection(
+            "/jobs/1/editor", "Managing Editor", "https://x.com/jobs"
+        )
+        self.assertIsNone(reason)
+        self.assertEqual(absolute, "https://x.com/jobs/1/editor")
+
     def test_aggregator_board_furniture_is_not_mistaken_for_a_job(self):
         # An industry jobs board sits its own admin links among the listings.
         page = """

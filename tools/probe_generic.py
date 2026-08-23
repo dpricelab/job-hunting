@@ -162,37 +162,16 @@ def main(argv: list[str]) -> int:
     except Exception as exc:  # noqa: BLE001 - diagnostic, report anything
         print(f"  (HTML parsing raised {type(exc).__name__}: {exc})")
 
-    page_host = urlparse(url).netloc
-    page_key = url.rstrip("/")
-
     reasons: dict[str, int] = {}
     kept: list[tuple[str, str]] = []
 
+    # The reader's own classifier, so what is reported here is what it does.
     for href, text in collector.anchors:
-        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
-            reason = "not a page link"
-        elif generic.NAV_TEXT.match(text):
-            reason = "link text looks like navigation"
-        elif not (3 <= len(text) <= 120):
-            reason = "link text too short or too long"
+        reason, absolute = generic.link_rejection(href, text, url)
+        if reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
         else:
-            absolute = urljoin(url, href)
-            if not generic.JOB_URL_HINT.search(absolute):
-                reason = "URL has no job-like word in it"
-            elif generic.JOB_URL_ANTI_HINT.search(absolute):
-                reason = "URL matches an excluded page (policy, privacy, ...)"
-            elif absolute.rstrip("/") == page_key:
-                reason = "link points back at this page"
-            elif urlparse(absolute).netloc != page_host and not generic.re.search(
-                r"(greenhouse|lever|ashby|workable|recruitee|smartrecruiters|personio)",
-                urlparse(absolute).netloc,
-                generic.re.I,
-            ):
-                reason = "link leaves this site"
-            else:
-                kept.append((text, absolute))
-                continue
-        reasons[reason] = reasons.get(reason, 0) + 1
+            kept.append((text, absolute))
 
     print("LINK HEURISTICS (fallback, used only when there is no structured data)")
     print(f"  links on the page: {len(collector.anchors)}")

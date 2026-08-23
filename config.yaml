@@ -65,11 +65,16 @@ rules:
   - re:\bcopy[- ]?desk\b
   - re:\bassistants?\b
   - re:\bcoordinators?\b
-  # London and remote only: relocation is not on the table, so Oxfordshire and
-  # Cambridge are deliberately excluded even though much of UK scholarly
-  # publishing sits there.
+  # London, remote, and the Oxford–Cambridge axis where most UK scholarly
+  # publishing actually sits. Matched as prefixes so Oxford also covers
+  # Oxfordshire, and Abingdon covers "Abingdon on Thames" — the exact string
+  # Taylor & Francis use for their journals base, and the reason Oxford alone
+  # would not have surfaced those roles.
   location_include:
   - London
+  - re:\boxford
+  - re:\babingdon
+  - re:\bcambridge
   - re:\bremote\b[^a-z]*\b(uk|gbr|united kingdom|england|britain|europe|emea)\b
   - re:\b(uk|gbr|united kingdom|england|britain)\b[^a-z]*\bremote\b
   - re:^\s*remote\s*$
@@ -79,8 +84,8 @@ rules:
   - USA
   # Boards put the country last as a code, lower case on SmartRecruiters:
   # "Newton, MA, us". Anything ending in a two-letter code that is not GB or
-  # UK is abroad. Still needed with a London-only list, because London,
-  # Ontario is a real place and reads as a match without it.
+  # UK is abroad. Load-bearing here: Cambridge Massachusetts, Oxford
+  # Mississippi and London Ontario all read as matches on the city name.
   - re:,\s*(?!gb\b|uk\b)[a-z]{2}\s*$
   exclude_keywords: []
   keywords:

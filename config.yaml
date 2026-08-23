@@ -58,7 +58,7 @@ companies:
   source: generic
   token: https://www.charityjob.co.uk/editorial-jobs
 rules:
-  min_score: 4
+  min_score: 5
   remote_only: false
   max_age_days: 0
   title_include:

@@ -239,18 +239,38 @@ python tools/probe_smartrecruiters.py "Taylor & Francis" editor
 
 ### Running it on a schedule
 
-`digest` shows only roles first seen since the previous digest, which is what
-makes it useful unattended. `--all` rebuilds everything, and `--no-mark` leaves
-the marker alone so the next run still counts them as new.
+`scripts/daily.sh` fetches and rebuilds the digest. It finds the repository
+from its own path and uses the virtual environment if there is one, because a
+scheduler runs neither a login shell nor from a predictable directory.
 
-A weekday-morning cron entry:
+On macOS:
 
-```cron
-0 8 * * 1-5 cd ~/job-hunting && .venv/bin/jobhunt fetch && .venv/bin/jobhunt digest
+```bash
+sh scripts/install-macos-schedule.sh        # weekdays at 07:00
+sh scripts/install-macos-schedule.sh 8 30   # or pick a time
 ```
 
-On Windows, use Task Scheduler to run a batch file containing the same two
-commands. Then open `out/digest.html` with your coffee.
+That writes a launchd agent and loads it. launchd rather than cron on purpose:
+cron simply skips a run if the machine is asleep at the appointed moment, which
+for a laptop is most mornings, whereas launchd runs the job when the machine
+next wakes.
+
+```bash
+launchctl start com.jobhunt.daily                            # run it now
+launchctl unload ~/Library/LaunchAgents/com.jobhunt.daily.plist   # stop
+```
+
+Output goes to `out/schedule.log`.
+
+On Linux, cron is fine, since a server is rarely asleep:
+
+```cron
+0 7 * * 1-5 /home/you/job-hunting/scripts/daily.sh >> /home/you/job-hunting/out/schedule.log 2>&1
+```
+
+On Windows, point Task Scheduler at a batch file running the same two commands.
+
+Either way, `out/digest.html` is waiting when you sit down.
 
 ## How it behaves
 

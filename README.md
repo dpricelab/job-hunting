@@ -32,6 +32,11 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 ```
 
+On macOS, `git` arrives with the Xcode command line tools, which the first
+`git` command offers to install. The system Python can be older than 3.10 —
+check with `python3 --version` and install a current one from python.org if it
+is.
+
 On Windows the activation step differs, and the rest is the same:
 
 ```bat
@@ -257,7 +262,12 @@ commands. Then open `out/digest.html` with your coffee.
 - **Failures are contained.** One unreachable board reports its error and the
   rest of the run continues. Requests retry with exponential backoff on
   timeouts and 5xx/429 responses.
-- **Your data stays local.** `data/jobs.db` and `config.yaml` are gitignored.
+- **Your data stays local.** `config.yaml` is tracked so the watch list and
+  rules follow you between machines. `data/jobs.db` is not, because it is
+  binary and changes on every run — **copy it across by hand when moving to a
+  new machine**, or you lose which roles you have already applied to or
+  ignored, and every posting reappears as new. It is one portable SQLite file
+  and works on any operating system.
 
 ## Layout
 

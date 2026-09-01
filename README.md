@@ -180,7 +180,19 @@ jobhunt fetch                      # refresh every board (6 at a time)
 jobhunt digest --open              # what's new since last time
 ```
 
-Then, for anything you act on:
+Or, to triage by clicking instead of typing:
+
+```bash
+jobhunt serve                      # same page, with working buttons
+```
+
+The written file cannot change anything — opened over `file://` it has no
+route back to the database. Served, each role gets **Applied** and **Not for
+me** buttons that write as you read, with an undo. It listens on loopback
+only, and every request carries a token minted at startup and embedded in the
+page, so a website open in another tab cannot post to it. Ctrl+C to stop.
+
+The equivalent from the terminal:
 
 ```bash
 jobhunt mark 9f2a1c applied --note "referred by Sam"
@@ -299,6 +311,8 @@ jobhunt/
   scoring.py        keyword and rule scoring
   store.py          SQLite persistence
   render.py         HTML digest
+  digest.py         what belongs in it, shared by the file and the server
+  server.py         local server whose buttons write to the database
   http.py           shared HTTP client with retries
   sources/
     __init__.py     registry, URL → reader
@@ -307,7 +321,7 @@ jobhunt/
     feeds.py        RSS and Atom
     generic.py      JSON-LD, embedded framework payloads, link heuristics
 tools/              probes that explain why a source returned what it did
-tests/              185 tests, no network access required
+tests/              203 tests, no network access required
 ```
 
 ## Tests

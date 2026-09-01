@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import __version__, sources
 from .config import Config, ConfigError, data_dir
+from .digest import collect
 from .http import HttpError
 from .models import Company, FetchResult, Job
 from .render import render_digest
@@ -658,38 +659,23 @@ def cmd_mark(args) -> int:
 
 
 def cmd_digest(args) -> int:
-    """Write the digest.
+    """Write the digest file.
 
-    By default this is an inbox, not a newsletter: every open role you have
-    not triaged, however long ago it arrived. Filtering by "since the last
-    digest" meant a role you did not get through vanished the next day while
-    still being open, which is the one failure a job search cannot afford.
+    An inbox, not a newsletter: every open role you have not triaged, however
+    long ago it arrived. Filtering by "since the last digest" meant a role you
+    did not get through vanished the next day while still being open.
     """
     out = Path(args.out) if args.out else Path("out/digest.html")
 
     with _store(args) as store:
-        last_digest = store.meta_get("last_digest_at")
-
-        rows = store.query(
-            rejected=False,
-            status=None if args.all else "new",
+        rows, subtitle, since = collect(
+            store,
+            show_all=args.all,
             min_score=args.min_score,
             company=args.company,
             since=args.since,
-            limit=args.limit,
         )
-
-        if args.all:
-            scope = "everything matching, triaged or not"
-        else:
-            scope = "open roles you have not triaged yet"
-
-        fresh = sum(1 for row in rows if last_digest and row["first_seen"] > last_digest)
-        subtitle = f"{len(rows)} {'role' if len(rows) == 1 else 'roles'} {SYM['dot']} {scope}"
-        if fresh:
-            subtitle += f" {SYM['dot']} {fresh} new since last time"
-
-        html = render_digest(rows, subtitle=subtitle, since=last_digest)
+        html = render_digest(rows, subtitle=subtitle, since=since)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(html, encoding="utf-8")
 
@@ -707,6 +693,38 @@ def cmd_digest(args) -> int:
 
     if args.open:
         webbrowser.open(out.resolve().as_uri())
+    return 0
+
+
+def cmd_serve(args) -> int:
+    """Serve the digest with working buttons.
+
+    The written file cannot change anything: opened over file:// it has no
+    route back to the database. Served, the same page can.
+    """
+    from .server import serve
+
+    base = Path(args.data_dir) if args.data_dir else data_dir()
+    try:
+        server = serve(base / "jobs.db", port=args.port, show_all=args.all)
+    except OSError as exc:
+        print(red(f"Could not start on port {args.port}: {exc}"))
+        print(dim("Another copy may already be running. Try --port 8766."))
+        return 1
+
+    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    print(f"Digest at {green(url)}")
+    print(dim("Buttons mark roles as you read. Ctrl+C to stop."))
+
+    if not args.no_open:
+        webbrowser.open(url)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.")
+    finally:
+        server.server_close()
     return 0
 
 
@@ -857,6 +875,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int)
     p.add_argument("--no-mark", action="store_true", help="do not advance the 'last digest' marker")
     p.set_defaults(func=cmd_digest)
+
+    p = sub.add_parser("serve", help="open the digest with working buttons")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--all", action="store_true", help="include triaged roles too")
+    p.add_argument("--no-open", action="store_true", help="do not open a browser")
+    p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("rescore", help="re-apply rules to stored roles without refetching")
     p.set_defaults(func=cmd_rescore)

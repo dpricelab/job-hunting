@@ -62,6 +62,15 @@ input[type=search]{flex:1;min-width:220px}
 .flag.new{background:var(--accent);border-color:var(--accent);color:#fff}
 .flag.deadline{background:var(--chip)}
 .flag.deadline.urgent{background:#b4441f;border-color:#b4441f;color:#fff}
+.actions{margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.actions button{
+  font:inherit;font-size:13px;padding:5px 12px;border-radius:7px;cursor:pointer;
+  border:1px solid var(--border);background:var(--surface);color:var(--text);
+}
+.actions button:hover{border-color:var(--accent);color:var(--accent)}
+.actions .result{font-size:12.5px;color:var(--muted)}
+.actions .result button{font-size:12px;padding:2px 8px}
+.job.done{opacity:.45}
 .chip{background:var(--chip);border-radius:6px;padding:2px 8px;font-size:12px;color:var(--muted)}
 .uid{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;opacity:.7}
 .empty{
@@ -108,7 +117,12 @@ def _esc(value) -> str:
 
 
 def render_digest(
-    rows, *, subtitle: str = "", generated_at: str | None = None, since: str | None = None
+    rows,
+    *,
+    subtitle: str = "",
+    generated_at: str | None = None,
+    since: str | None = None,
+    api_token: str | None = None,
 ) -> str:
     """Build the digest page. `rows` are sqlite3.Row/dict-like job records."""
     jobs = [dict(row) for row in rows]
@@ -116,7 +130,20 @@ def render_digest(
     companies = sorted({j.get("company", "") for j in jobs if j.get("company")})
 
     options = "".join(f'<option value="{_esc(c)}">{_esc(c)}</option>' for c in companies)
-    body = "\n".join(_job_card(job, since) for job in jobs) if jobs else _empty_state()
+    footer = (
+        "Marking a role removes it from this list. Reload to see the current one."
+        if api_token
+        else "Mark one off with <code>jobhunt mark &lt;id&gt; applied</code>, "
+        "or run <code>jobhunt serve</code> for buttons."
+    )
+    token_meta = (
+        f'<meta name="jobhunt-token" content="{_esc(api_token)}">' if api_token else ""
+    )
+    body = (
+        "\n".join(_job_card(job, since, bool(api_token)) for job in jobs)
+        if jobs
+        else _empty_state()
+    )
 
     return f"""<!doctype html>
 <html lang="en">
@@ -124,6 +151,7 @@ def render_digest(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Job digest — {_esc(generated)}</title>
+{token_meta}
 <style>{_CSS}</style>
 </head>
 <body>
@@ -147,15 +175,16 @@ def render_digest(
 
   {body}
 
-  <footer>Mark one off with <code>jobhunt mark &lt;id&gt; applied</code></footer>
+  <footer>{footer}</footer>
 </div>
 <script>{_JS}</script>
+{_ACTION_JS if api_token else ''}
 </body>
 </html>
 """
 
 
-def _job_card(job: dict, since: str | None = None) -> str:
+def _job_card(job: dict, since: str | None = None, interactive: bool = False) -> str:
     score = job.get("score") or 0
     score_label = int(score) if float(score).is_integer() else round(float(score), 1)
 
@@ -190,6 +219,17 @@ def _job_card(job: dict, since: str | None = None) -> str:
         flags += f'<span class="flag deadline{urgent}">{_esc(closing)}</span>'
     
 
+    uid = _esc(job.get("uid", ""))
+    actions = (
+        f'<div class="actions" data-uid="{uid}">'
+        f'<button type="button" data-status="applied">Applied</button>'
+        f'<button type="button" data-status="ignored">Not for me</button>'
+        f'<span class="result"></span>'
+        f"</div>"
+        if interactive
+        else ""
+    )
+
     chips = "".join(f'<span class="chip">{_esc(term)}</span>' for term in matched[:12])
     snippet = truncate(job.get("description") or "", 240)
 
@@ -207,6 +247,7 @@ def _job_card(job: dict, since: str | None = None) -> str:
     {f'<div class="flags">{flags}</div>' if flags else ''}
     {f'<div class="snippet">{_esc(snippet)}</div>' if snippet else ''}
     {f'<div class="chips">{chips}</div>' if chips else ''}
+    {actions}
   </article>"""
 
 
@@ -237,3 +278,47 @@ def _closing_label(deadline: str | None) -> str:
     if days == 1:
         return "Closes tomorrow"
     return f"Closes in {days} days"
+
+
+_ACTION_JS = """<script>
+(function(){
+  var meta = document.querySelector('meta[name="jobhunt-token"]');
+  if (!meta) return;
+  var token = meta.content;
+
+  function mark(card, uid, status, result){
+    result.textContent = 'saving…';
+    fetch('/api/status', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Jobhunt-Token': token},
+      body: JSON.stringify({uid: uid, status: status})
+    }).then(function(r){ return r.json(); }).then(function(data){
+      if (!data.ok) { result.textContent = data.detail || 'failed'; return; }
+      card.classList.add('done');
+      result.innerHTML = '';
+      result.appendChild(document.createTextNode('Marked ' + status + '. '));
+      var undo = document.createElement('button');
+      undo.type = 'button';
+      undo.textContent = 'Undo';
+      undo.addEventListener('click', function(){
+        mark(card, uid, 'new', result);
+        card.classList.remove('done');
+        result.textContent = '';
+      });
+      result.appendChild(undo);
+    }).catch(function(){
+      result.textContent = 'could not reach jobhunt — is it still running?';
+    });
+  }
+
+  document.querySelectorAll('.actions').forEach(function(box){
+    var uid = box.dataset.uid;
+    var result = box.querySelector('.result');
+    box.querySelectorAll('button[data-status]').forEach(function(button){
+      button.addEventListener('click', function(){
+        mark(box.closest('.job'), uid, button.dataset.status, result);
+      });
+    });
+  });
+})();
+</script>"""

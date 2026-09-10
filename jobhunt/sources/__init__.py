@@ -31,7 +31,7 @@ REGISTRY: tuple[SourceDef, ...] = (
     ),
     SourceDef("recruitee", ats.detect_recruitee, ats.fetch_recruitee),
     SourceDef("workable", ats.detect_workable, ats.fetch_workable),
-    SourceDef("workday", ats.detect_workday, ats.fetch_workday),
+    SourceDef("workday", ats.detect_workday, ats.fetch_workday, accepts_params=True),
     SourceDef("personio", ats.detect_personio, ats.fetch_personio),
     SourceDef("rss", feeds.detect_feed, feeds.fetch_feed),
     SourceDef("generic", generic.detect_generic, generic.fetch_generic, confident=False),

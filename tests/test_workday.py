@@ -235,6 +235,69 @@ class WorkdayIdentityTests(unittest.TestCase):
         self.assertEqual(job.location, "London, United Kingdom")
 
 
+class WorkdayFacetTests(unittest.TestCase):
+    """Reading one country from a board that lists a whole multinational."""
+
+    def test_params_become_applied_facets(self):
+        facets, text = ats.workday_facets({"locationCountry": "29247e57"})
+        self.assertEqual(facets, {"locationCountry": ["29247e57"]})
+        self.assertEqual(text, "")
+
+    def test_lists_pass_through_and_search_text_is_separate(self):
+        facets, text = ats.workday_facets(
+            {"locations": ["a1", "b2"], "searchText": "editor"}
+        )
+        self.assertEqual(facets, {"locations": ["a1", "b2"]})
+        self.assertEqual(text, "editor")
+
+    def test_empty_values_are_dropped(self):
+        facets, _ = ats.workday_facets({"locationCountry": ["", None, "x"]})
+        self.assertEqual(facets, {"locationCountry": ["x"]})
+
+    def test_no_params_means_no_filter(self):
+        self.assertEqual(ats.workday_facets(None), ({}, ""))
+
+    def test_facets_reach_the_request_body(self):
+        seen: list[dict] = []
+
+        def fake_post_json(url, body, **kwargs):
+            seen.append(body)
+            return {"total": 0, "jobPostings": []}
+
+        original = ats.post_json
+        ats.post_json = fake_post_json
+        try:
+            ats.fetch_workday(
+                "wk.wd3.myworkdayjobs.com/wk/External",
+                "Wolters Kluwer",
+                params={"locationCountry": "29247e57"},
+            )
+        finally:
+            ats.post_json = original
+
+        self.assertEqual(seen[0]["appliedFacets"], {"locationCountry": ["29247e57"]})
+        self.assertEqual(seen[0]["limit"], ats.WORKDAY_PAGE_SIZE)
+
+    def test_facets_are_read_from_a_filtered_url_on_add(self):
+        from jobhunt.cli import _facets_from_url
+
+        url = "https://wk.wd3.myworkdayjobs.com/External?locationCountry=29247e57&jobFamilyGroup=abc"
+        self.assertEqual(
+            _facets_from_url(url), {"locationCountry": "29247e57", "jobFamilyGroup": "abc"}
+        )
+
+    def test_a_plain_url_yields_no_facets(self):
+        from jobhunt.cli import _facets_from_url
+
+        self.assertEqual(_facets_from_url("https://wk.wd3.myworkdayjobs.com/External"), {})
+
+    def test_detection_ignores_the_query_string(self):
+        self.assertEqual(
+            ats.detect_workday("https://wk.wd3.myworkdayjobs.com/External?locationCountry=x"),
+            "wk.wd3.myworkdayjobs.com/wk/External",
+        )
+
+
 class WorkdayDateTests(unittest.TestCase):
     def days_ago(self, iso: str) -> int:
         parsed = datetime.fromisoformat(iso)

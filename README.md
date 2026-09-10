@@ -98,6 +98,12 @@ and any **RSS/Atom** feed.
 > by that value only when it is shaped like a requisition id, and by their
 > unique path otherwise — trusting it blindly would give every job in one city
 > the same identity.
+>
+> **Big boards can be filtered server-side.** A multinational's Workday site
+> lists every role worldwide. Filter it in the browser — by country, say — and
+> paste the resulting URL into `jobhunt add`: the filter ids in the query
+> string are kept and applied to every fetch, so only those roles are read.
+> To change a filter later, edit the company's `params` in `config.yaml`.
 
 For anything else, jobhunt falls back to reading the page itself: first any
 [schema.org `JobPosting`](https://schema.org/JobPosting) data embedded for
@@ -321,7 +327,7 @@ jobhunt/
     feeds.py        RSS and Atom
     generic.py      JSON-LD, embedded framework payloads, link heuristics
 tools/              probes that explain why a source returned what it did
-tests/              203 tests, no network access required
+tests/              211 tests, no network access required
 ```
 
 ## Tests

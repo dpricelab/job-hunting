@@ -438,7 +438,27 @@ def detect_workday(url: str) -> str | None:
     return None
 
 
-def fetch_workday(token: str, company: str) -> list[Job]:
+def workday_facets(params: dict | None) -> tuple[dict, str]:
+    """Split configured params into Workday's appliedFacets and searchText.
+
+    Filtering a board in the browser puts the facet ids in the URL, e.g.
+    ``?locationCountry=29247e57...``. Those same ids go straight into the
+    search request, which is how one country's roles are read from a board
+    that lists a whole multinational.
+    """
+    facets: dict[str, list[str]] = {}
+    search_text = ""
+    for key, value in (params or {}).items():
+        key = str(key)
+        if key == "searchText":
+            search_text = str(value)
+            continue
+        values = value if isinstance(value, list) else [value]
+        facets[key] = [str(v) for v in values if v not in (None, "")]
+    return facets, search_text
+
+
+def fetch_workday(token: str, company: str, params: dict | None = None) -> list[Job]:
     parts = token.split("/")
     if len(parts) < 3 or not all(parts[:3]):
         raise HttpError(
@@ -447,6 +467,7 @@ def fetch_workday(token: str, company: str) -> list[Job]:
 
     host, tenant, site = parts[0], parts[1], parts[2]
     locale = parts[3] if len(parts) > 3 and parts[3] else WORKDAY_DEFAULT_LOCALE
+    facets, search_text = workday_facets(params)
 
     base = f"{WORKDAY_SCHEME}://{host}/wday/cxs/{tenant}/{site}"
     postings: list[dict] = []
@@ -458,10 +479,10 @@ def fetch_workday(token: str, company: str) -> list[Job]:
         payload = post_json(
             f"{base}/jobs",
             {
-                "appliedFacets": {},
+                "appliedFacets": facets,
                 "limit": WORKDAY_PAGE_SIZE,
                 "offset": offset,
-                "searchText": "",
+                "searchText": search_text,
             },
         )
         batch = payload.get("jobPostings") or []

@@ -274,6 +274,26 @@ def _normalize_url(url: str) -> str:
     return (url or "").strip().split("#", 1)[0]
 
 
+def _facets_from_url(url: str) -> dict:
+    """Read Workday filters out of a URL copied from the browser.
+
+    Filtering a board on the site puts opaque facet ids in the query string,
+    such as ``?locationCountry=29247e57...``. Keeping them means one
+    country's roles are read from a board that lists a whole multinational,
+    rather than every posting worldwide.
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    query = parse_qs(urlparse(url).query)
+    facets: dict = {}
+    for key, values in query.items():
+        clean = [v for v in values if v]
+        if not clean:
+            continue
+        facets[key] = clean if len(clean) > 1 else clean[0]
+    return facets
+
+
 def cmd_add(args) -> int:
     config = _load_config(args)
     args.url = _normalize_url(args.url)
@@ -292,10 +312,16 @@ def cmd_add(args) -> int:
         source_name, token, sniffed = sources.resolve(args.url, sniff=not args.no_sniff)
 
     name = args.name or _suggest_name(args.url, token)
-    company = Company(name=name, url=args.url, source=source_name, token=token)
+    params = _facets_from_url(args.url) if source_name == "workday" else {}
+    company = Company(
+        name=name, url=args.url, source=source_name, token=token, params=params
+    )
 
     note = " (found embedded in the page)" if sniffed else ""
     print(f"Board: {bold(source_name)} {SYM['dot']} token {bold(token)}{note}")
+    if params:
+        print(f"Filter: {', '.join(f'{k}={v}' for k, v in params.items())}")
+        print(dim("  (taken from the URL; only roles matching it will be fetched)"))
 
     if source_name == "generic":
         print(

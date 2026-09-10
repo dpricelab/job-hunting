@@ -57,6 +57,10 @@ companies:
   url: https://www.charityjob.co.uk/editorial-jobs
   source: generic
   token: https://www.charityjob.co.uk/editorial-jobs
+- name: Wolters Kluwer
+  url: https://wk.wd3.myworkdayjobs.com/External
+  source: workday
+  token: wk.wd3.myworkdayjobs.com/wk/External
 rules:
   min_score: 5
   remote_only: false

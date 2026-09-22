@@ -119,4 +119,4 @@ rules:
     manuscript: 1
     London: 2
   title_bonus: 2
-  title_bypass_score: 8
+  title_bypass_score: 0

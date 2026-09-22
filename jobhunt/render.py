@@ -316,15 +316,18 @@ _ACTION_JS = """<script>
       headers: {'Content-Type': 'application/json', 'X-Jobhunt-Token': token},
       body: JSON.stringify({uid: uid, status: status})
     }).then(function(r){ return r.json(); }).then(function(data){
-      if (!data.ok) throw new Error(data.detail || 'failed');
+      if (!data.ok) throw {detail: data.detail || 'failed'};
       return data;
     });
   }
 
+  // Browsers word a lost connection differently (Chrome "Failed to fetch",
+  // Firefox "NetworkError when attempting…", Safari "Load failed"), so only
+  // a refusal the server itself sent is shown as it is.
   function failed(result){
     return function(err){
-      result.textContent = (err && err.message && err.message !== 'Failed to fetch')
-        ? err.message
+      result.textContent = (err && err.detail)
+        ? err.detail
         : 'could not reach jobhunt — is it still running?';
     };
   }

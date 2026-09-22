@@ -16,13 +16,17 @@ def collect(
     min_score: float | None = None,
     company: str | None = None,
     since: str | None = None,
+    limit: int | None = None,
+    last_digest: str | None = None,
 ):
     """Return (rows, subtitle, last_digest_at).
 
     Untriaged and still open by default: a role stays until you mark it or the
-    employer withdraws it, never merely because time passed.
+    employer withdraws it, never merely because time passed. `last_digest`
+    overrides the stored marker, for a server that has already moved it.
     """
-    last_digest = store.meta_get("last_digest_at")
+    if last_digest is None:
+        last_digest = store.meta_get("last_digest_at")
 
     rows = store.query(
         rejected=False,
@@ -30,6 +34,7 @@ def collect(
         min_score=min_score,
         company=company,
         since=since,
+        limit=limit,
     )
 
     scope = "everything matching, triaged or not" if show_all else (

@@ -287,11 +287,22 @@ def _facets_from_url(url: str) -> dict:
     query = parse_qs(urlparse(url).query)
     facets: dict = {}
     for key, values in query.items():
-        clean = [v for v in values if v]
+        if key == "q":
+            # The board's own search box; Workday takes it as searchText.
+            if values and values[0].strip():
+                facets["searchText"] = values[0].strip()
+            continue
+        # Facet ids are 32 hex digits. Anything else in a copied URL is
+        # tracking (?source=LinkedIn, utm_…), and sent as a facet it would
+        # filter the board down to nothing.
+        clean = [v for v in values if _WORKDAY_FACET_RE.match(v)]
         if not clean:
             continue
         facets[key] = clean if len(clean) > 1 else clean[0]
     return facets
+
+
+_WORKDAY_FACET_RE = re.compile(r"^[0-9a-f]{32}$", re.I)
 
 
 def cmd_add(args) -> int:
@@ -554,8 +565,28 @@ def cmd_fetch(args) -> int:
                 print(f"  {red(SYM['fail'])} {result.company}: {result.error}")
                 continue
 
+            # Workday reads each body with a separate call, and one that fails
+            # leaves the text blank. Scoring that blank would quietly reject a
+            # role that matched yesterday, so reuse the text already stored.
+            known = store.descriptions([job.uid for job in result.jobs if not job.description])
+            for job in result.jobs:
+                if not job.description and known.get(job.uid):
+                    job.description = known[job.uid]
+
             scored = [(job, score_job(job, config.rules)) for job in result.jobs]
             kept = [v for _, v in scored if v.kept]
+
+            # A board that answers with nothing at all is far more often a
+            # hiccup (a maintenance page, a changed layout) than an employer
+            # withdrawing every role at once. Closing on it would empty the
+            # company from the digest, so leave what is known as it is.
+            if not result.jobs and store.count_open(result.company):
+                print(
+                    f"  {yellow(SYM['warn'])} {result.company}: no roles returned "
+                    f"{SYM['dash']} keeping the ones already listed open"
+                )
+                continue
+
             stats = store.upsert(scored, close_missing_for=result.company)
 
             total_new += stats.new
@@ -700,6 +731,7 @@ def cmd_digest(args) -> int:
             min_score=args.min_score,
             company=args.company,
             since=args.since,
+            limit=args.limit,
         )
         html = render_digest(rows, subtitle=subtitle, since=since)
         out.parent.mkdir(parents=True, exist_ok=True)

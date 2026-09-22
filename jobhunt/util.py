@@ -71,6 +71,10 @@ def to_iso(value) -> str | None:
         seconds = float(value)
         if seconds > 1e11:  # milliseconds
             seconds /= 1000.0
+        if seconds < 1e9:
+            # Before September 2001: not a posting date but something else
+            # numeric, such as a bare year, which would otherwise read as 1970.
+            return None
         try:
             return datetime.fromtimestamp(seconds, timezone.utc).isoformat()
         except (OverflowError, OSError, ValueError):
@@ -81,6 +85,11 @@ def to_iso(value) -> str | None:
         return None
 
     if text.isdigit():
+        if len(text) == 8:  # a compact date, 20260930
+            try:
+                return datetime.strptime(text, "%Y%m%d").replace(tzinfo=timezone.utc).isoformat()
+            except ValueError:
+                return None
         return to_iso(int(text))
 
     try:

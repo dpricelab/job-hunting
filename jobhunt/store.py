@@ -118,7 +118,7 @@ class Store:
                     department  = excluded.department,
                     posted_at   = COALESCE(excluded.posted_at, jobs.posted_at),
                     deadline    = COALESCE(excluded.deadline, jobs.deadline),
-                    description = excluded.description,
+                    description = COALESCE(NULLIF(excluded.description, ''), jobs.description),
                     remote      = excluded.remote,
                     score       = excluded.score,
                     matched     = excluded.matched,
@@ -191,6 +191,28 @@ class Store:
             "SELECT COUNT(*) AS n FROM jobs WHERE company = ?", (company,)
         ).fetchone()
         return row["n"] or 0
+
+    def count_open(self, company: str) -> int:
+        """Roles for one company not yet marked closed. Exact name only."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM jobs WHERE company = ? AND closed_at IS NULL",
+            (company,),
+        ).fetchone()
+        return row["n"] or 0
+
+    def descriptions(self, uids: list[str]) -> dict[str, str]:
+        """Stored body text for the given uids, where there is any."""
+        found: dict[str, str] = {}
+        for start in range(0, len(uids), 500):  # SQLite caps bound parameters
+            chunk = uids[start : start + 500]
+            placeholders = ",".join("?" for _ in chunk)
+            for row in self.conn.execute(
+                f"SELECT uid, description FROM jobs WHERE uid IN ({placeholders})",
+                chunk,
+            ):
+                if row["description"]:
+                    found[row["uid"]] = row["description"]
+        return found
 
     def delete_company(self, company: str) -> int:
         """Forget every posting stored for one company. Exact name only."""

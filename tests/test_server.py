@@ -173,6 +173,33 @@ class ServerTests(unittest.TestCase):
     def test_the_server_binds_only_to_loopback(self):
         self.assertEqual(self.server.server_address[0], "127.0.0.1")
 
+    # -- what counts as new -----------------------------------------------
+
+    def test_new_badges_show_and_survive_a_reload(self):
+        # The scheduled run writes its file without moving the marker, so the
+        # server is what decides "new since you last looked".
+        with Store(self.db) as store:
+            store.meta_set("last_digest_at", "2000-01-01T00:00:00+00:00")
+        other = serve(self.db, port=0)
+        try:
+            self.assertIn('class="flag new"', other.render().decode())
+            self.assertIn('class="flag new"', other.render().decode())
+        finally:
+            other.server_close()
+
+    def test_opening_the_page_moves_the_marker(self):
+        with Store(self.db) as store:
+            store.meta_set("last_digest_at", "2000-01-01T00:00:00+00:00")
+        serve(self.db, port=0).server_close()
+        with Store(self.db) as store:
+            self.assertGreater(store.meta_get("last_digest_at"), "2000-01-01")
+        # So the next session does not badge the same roles again.
+        again = serve(self.db, port=0)
+        try:
+            self.assertNotIn('class="flag new"', again.render().decode())
+        finally:
+            again.server_close()
+
     def test_each_run_mints_a_fresh_token(self):
         other = serve(self.db, port=0)
         try:

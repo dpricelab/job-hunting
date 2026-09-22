@@ -45,6 +45,19 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(row["title"], "Backend Engineer II")
         self.assertEqual(row["score"], 6)
 
+    def test_a_blank_refetch_keeps_the_stored_description(self):
+        # A failed detail call yields no body; that is not the role changing.
+        self.store.upsert([(job(description="Peer review of journals."), Verdict(score=5))])
+        self.store.upsert([(job(description=""), Verdict(score=5))])
+        self.assertEqual(self.store.query()[0]["description"], "Peer review of journals.")
+
+    def test_descriptions_are_looked_up_by_uid(self):
+        with_body = job(external_id="1", description="Journals.")
+        without = job(external_id="2", description="")
+        self.store.upsert([(with_body, Verdict()), (without, Verdict())])
+        found = self.store.descriptions([with_body.uid, without.uid, "missing"])
+        self.assertEqual(found, {with_body.uid: "Journals."})
+
     def test_rejected_jobs_are_hidden_from_the_default_query(self):
         self.store.upsert(
             [

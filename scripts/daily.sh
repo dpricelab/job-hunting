@@ -23,6 +23,15 @@ else
 fi
 
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') fetching ==="
-$jobhunt fetch
-$jobhunt digest
+# launchd runs a missed job the moment the machine wakes, which can be before
+# Wi-Fi has reconnected. fetch exits non-zero only when every board failed, so
+# that is the case worth one more try once the network has had time to return.
+if ! $jobhunt fetch; then
+    echo "--- every board failed; retrying in 60s ---"
+    sleep 60
+    $jobhunt fetch || echo "--- still failing; the digest shows what was already known ---"
+fi
+# --no-mark: a scheduled run is not you reading the list. The "New" badges
+# should mean new since you last looked, not since 07:00 this morning.
+$jobhunt digest --no-mark
 echo "=== done ==="

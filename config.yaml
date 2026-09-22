@@ -99,7 +99,7 @@ rules:
   location_exclude:
   - United States
   - USA
-  - re:,\s*(?!gb\b|uk\b)[a-z]{2}\s*$
+  - re:,\s*(?!gb\b|uk\b|eu\b)[a-z]{2}\s*$
   exclude_keywords: []
   keywords:
     re:\bpublisher\b: 6

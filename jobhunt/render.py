@@ -220,8 +220,9 @@ def _job_card(job: dict, since: str | None = None, interactive: bool = False) ->
     
 
     uid = _esc(job.get("uid", ""))
+    was = _esc(job.get("status") or "new")
     actions = (
-        f'<div class="actions" data-uid="{uid}">'
+        f'<div class="actions" data-uid="{uid}" data-was="{was}">'
         f'<button type="button" data-status="applied">Applied</button>'
         f'<button type="button" data-status="ignored">Not for me</button>'
         f'<span class="result"></span>'
@@ -240,7 +241,7 @@ def _job_card(job: dict, since: str | None = None, interactive: bool = False) ->
 
     return f"""  <article class="job" data-score="{_esc(score)}" data-company="{_esc(job.get('company',''))}" data-search="{_esc(search_blob[:1200])}">
     <div class="row">
-      <h2 class="title"><a href="{_esc(job.get('url',''))}" target="_blank" rel="noopener">{_esc(job.get('title',''))}</a></h2>
+      <h2 class="title"><a href="{_esc(_safe_href(job.get('url')))}" target="_blank" rel="noopener">{_esc(job.get('title',''))}</a></h2>
       <span class="badge">{_esc(score_label)}</span>
     </div>
     <div class="meta">{meta}</div>
@@ -251,6 +252,17 @@ def _job_card(job: dict, since: str | None = None, interactive: bool = False) ->
   </article>"""
 
 
+def _safe_href(url) -> str:
+    """Only web links become clickable.
+
+    Posting URLs come from whatever a careers page embeds. A `javascript:`
+    one would run in the served page, which holds the token that lets the
+    page change statuses.
+    """
+    url = str(url or "").strip()
+    return url if url.lower().startswith(("http://", "https://")) else "#"
+
+
 def _empty_state() -> str:
     return """  <div class="empty">
     <p><strong>Nothing left to triage.</strong></p>
@@ -259,8 +271,13 @@ def _empty_state() -> str:
   </div>"""
 
 
-def _closing_label(deadline: str | None) -> str:
-    """How long is left to apply, where the board says so at all."""
+def _closing_label(deadline: str | None, now: datetime | None = None) -> str:
+    """How long is left to apply, where the board says so at all.
+
+    Counted in calendar days, not 24-hour spans. Most boards give a bare date,
+    stored as midnight, and that means "open until the end of that day":
+    subtracting timestamps called it closed on the deadline day itself.
+    """
     if not deadline:
         return ""
     try:
@@ -269,8 +286,15 @@ def _closing_label(deadline: str | None) -> str:
         return ""
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
+    now = now or datetime.now(timezone.utc)
 
-    days = (dt - datetime.now(timezone.utc)).days
+    date_only = (dt.hour, dt.minute, dt.second, dt.microsecond) == (0, 0, 0, 0)
+    if date_only:
+        days = (dt.date() - now.astimezone(timezone.utc).date()).days
+    else:
+        if dt <= now:
+            return "Closed"
+        days = (dt.astimezone(timezone.utc).date() - now.astimezone(timezone.utc).date()).days
     if days < 0:
         return "Closed"
     if days == 0:
@@ -286,37 +310,55 @@ _ACTION_JS = """<script>
   if (!meta) return;
   var token = meta.content;
 
-  function mark(card, uid, status, result){
-    result.textContent = 'saving…';
-    fetch('/api/status', {
+  function send(uid, status){
+    return fetch('/api/status', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Jobhunt-Token': token},
       body: JSON.stringify({uid: uid, status: status})
     }).then(function(r){ return r.json(); }).then(function(data){
-      if (!data.ok) { result.textContent = data.detail || 'failed'; return; }
+      if (!data.ok) throw new Error(data.detail || 'failed');
+      return data;
+    });
+  }
+
+  function failed(result){
+    return function(err){
+      result.textContent = (err && err.message && err.message !== 'Failed to fetch')
+        ? err.message
+        : 'could not reach jobhunt — is it still running?';
+    };
+  }
+
+  function mark(card, box, status, result){
+    result.textContent = 'saving…';
+    send(box.dataset.uid, status).then(function(){
       card.classList.add('done');
       result.innerHTML = '';
       result.appendChild(document.createTextNode('Marked ' + status + '. '));
       var undo = document.createElement('button');
       undo.type = 'button';
       undo.textContent = 'Undo';
-      undo.addEventListener('click', function(){
-        mark(card, uid, 'new', result);
-        card.classList.remove('done');
-        result.textContent = '';
-      });
+      undo.addEventListener('click', function(){ restore(card, box, result); });
       result.appendChild(undo);
-    }).catch(function(){
-      result.textContent = 'could not reach jobhunt — is it still running?';
-    });
+    }).catch(failed(result));
+  }
+
+  // Undo puts back whatever the role was before, which is not always 'new'
+  // (with --all the page also shows roles already triaged), and leaves the
+  // card looking untouched rather than marked all over again.
+  function restore(card, box, result){
+    result.textContent = 'saving…';
+    send(box.dataset.uid, box.dataset.was || 'new').then(function(){
+      card.classList.remove('done');
+      result.textContent = '';
+    }).catch(failed(result));
   }
 
   document.querySelectorAll('.actions').forEach(function(box){
-    var uid = box.dataset.uid;
     var result = box.querySelector('.result');
     box.querySelectorAll('button[data-status]').forEach(function(button){
       button.addEventListener('click', function(){
-        mark(box.closest('.job'), uid, button.dataset.status, result);
+        mark(box.closest('.job'), box, button.dataset.status, result);
       });
     });
   });

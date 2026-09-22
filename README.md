@@ -271,7 +271,11 @@ python tools/probe_smartrecruiters.py "Taylor & Francis" editor
 
 `scripts/daily.sh` fetches and rebuilds the digest. It finds the repository
 from its own path and uses the virtual environment if there is one, because a
-scheduler runs neither a login shell nor from a predictable directory.
+scheduler runs neither a login shell nor from a predictable directory. If every
+board fails — typically the machine waking before Wi-Fi is back — it waits a
+minute and tries once more. It does not move the "New" marker: that moves when
+you open the digest yourself, with `digest` or `serve`, so the badges mean new
+since you last looked.
 
 On macOS:
 
@@ -308,7 +312,9 @@ Either way, `out/digest.html` is waiting when you sit down.
   parameters appearing in a URL will not resurface it as new.
 - **Delisting.** After a successful fetch, previously-seen roles that have
   vanished from a board are marked closed and drop out of listings. If one
-  reappears, it is reopened. `--include-closed` shows them.
+  reappears, it is reopened. `--include-closed` shows them. A board that
+  suddenly returns no roles at all is treated as a hiccup, not a mass
+  withdrawal, and its roles are left open.
 - **Failures are contained.** One unreachable board reports its error and the
   rest of the run continues. Requests retry with exponential backoff on
   timeouts and 5xx/429 responses.
@@ -339,7 +345,7 @@ jobhunt/
     feeds.py        RSS and Atom
     generic.py      JSON-LD, embedded framework payloads, link heuristics
 tools/              probes that explain why a source returned what it did
-tests/              211 tests, no network access required
+tests/              242 tests, no network access required
 ```
 
 ## Tests

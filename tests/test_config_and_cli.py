@@ -39,6 +39,13 @@ class UtilTests(unittest.TestCase):
         self.assertIsNone(to_iso(""))
         self.assertIsNone(to_iso("next Tuesday"))
 
+    def test_a_bare_year_is_not_read_as_seconds_since_1970(self):
+        self.assertIsNone(to_iso("2026"))
+        self.assertIsNone(to_iso(2026))
+
+    def test_a_compact_date_is_read_as_a_date(self):
+        self.assertEqual(to_iso("20260930"), "2026-09-30T00:00:00+00:00")
+
     def test_naive_timestamps_are_treated_as_utc(self):
         self.assertEqual(to_iso("2024-10-02T09:00:00"), "2024-10-02T09:00:00+00:00")
 

@@ -281,10 +281,33 @@ class WorkdayFacetTests(unittest.TestCase):
     def test_facets_are_read_from_a_filtered_url_on_add(self):
         from jobhunt.cli import _facets_from_url
 
-        url = "https://wk.wd3.myworkdayjobs.com/External?locationCountry=29247e57&jobFamilyGroup=abc"
-        self.assertEqual(
-            _facets_from_url(url), {"locationCountry": "29247e57", "jobFamilyGroup": "abc"}
+        country = "29247e57dbaf46fb855b224e03170bc7"
+        family = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+        url = (
+            "https://wk.wd3.myworkdayjobs.com/External"
+            f"?locationCountry={country}&jobFamilyGroup={family}"
         )
+        self.assertEqual(
+            _facets_from_url(url), {"locationCountry": country, "jobFamilyGroup": family}
+        )
+
+    def test_tracking_parameters_are_not_taken_for_facets(self):
+        # Sent as a facet, ?source=LinkedIn would filter the board to nothing.
+        from jobhunt.cli import _facets_from_url
+
+        country = "29247e57dbaf46fb855b224e03170bc7"
+        url = (
+            "https://wk.wd3.myworkdayjobs.com/External"
+            f"?locationCountry={country}&source=LinkedIn&utm_medium=email"
+        )
+        self.assertEqual(_facets_from_url(url), {"locationCountry": country})
+
+    def test_the_search_box_becomes_search_text(self):
+        from jobhunt.cli import _facets_from_url
+
+        facets = _facets_from_url("https://wk.wd3.myworkdayjobs.com/External?q=editor")
+        self.assertEqual(facets, {"searchText": "editor"})
+        self.assertEqual(ats.workday_facets(facets), ({}, "editor"))
 
     def test_a_plain_url_yields_no_facets(self):
         from jobhunt.cli import _facets_from_url

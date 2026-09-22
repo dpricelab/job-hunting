@@ -176,6 +176,35 @@ class IntegrationTests(unittest.TestCase):
             ]
         self.assertIn("Engineering Intern", closed)
 
+    def test_a_board_returning_nothing_does_not_close_its_roles(self):
+        # A maintenance page or changed layout reads as zero roles. Closing on
+        # that would silently empty the company out of the digest.
+        self.run_cli("fetch")
+        _Handler.payload = []
+        code, out = self.run_cli("fetch")
+        self.assertEqual(code, 0, out)
+        self.assertIn("no roles returned", out)
+        self.assertEqual([r["title"] for r in self.rows()], ["Senior Python Engineer"])
+
+    def test_a_role_losing_its_body_for_one_fetch_is_still_matched(self):
+        # Only the body says Python here, so scoring a blank would reject it.
+        body_only = posting("Platform Engineer", "platform", "<p>Python services.</p>")
+        _Handler.payload = [body_only]
+        self.run_cli("fetch")
+        self.assertEqual([r["title"] for r in self.rows()], ["Platform Engineer"])
+
+        _Handler.payload = [dict(body_only, description="")]
+        self.run_cli("fetch")
+        self.assertEqual([r["title"] for r in self.rows()], ["Platform Engineer"])
+
+    def test_digest_limit_is_honoured(self):
+        _Handler.payload = SECOND_FETCH
+        self.run_cli("fetch")
+        self.assertEqual(len(self.rows()), 2)
+        digest = self.base / "digest.html"
+        self.run_cli("digest", "--out", str(digest), "--limit", "1")
+        self.assertEqual(digest.read_text().count('<article class="job"'), 1)
+
     def test_an_untriaged_role_stays_in_the_digest(self):
         # The digest is an inbox: not getting through the list must not lose
         # a role that is still open.

@@ -183,6 +183,16 @@ class ScoringTests(unittest.TestCase):
         self.assertFalse(verdict.kept)
         self.assertIn("New York", verdict.rejected)
 
+    def test_the_trailing_country_code_rule_spares_uk_and_eu(self):
+        # The rule in config.yaml that drops "Cambridge, MA" and "Oxford, OH".
+        rule = [r"re:,\s*(?!gb\b|uk\b|eu\b)[a-z]{2}\s*$"]
+        for place in ("Remote, EU", "London, UK", "London, GB"):
+            verdict = score_job(make_job(location=place), rules(location_exclude=rule, min_score=0))
+            self.assertTrue(verdict.kept, place)
+        for place in ("Cambridge, MA", "Oxford, OH"):
+            verdict = score_job(make_job(location=place), rules(location_exclude=rule, min_score=0))
+            self.assertFalse(verdict.kept, place)
+
     def test_location_include_gates_stated_locations(self):
         job = make_job(location="Manchester, UK")
         verdict = score_job(job, rules(location_include=["London"]))

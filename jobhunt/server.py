@@ -22,6 +22,7 @@ from pathlib import Path
 from .digest import collect
 from .render import render_digest
 from .store import USER_STATUSES, Store
+from .util import now_iso
 
 MAX_BODY = 8192
 
@@ -35,13 +36,22 @@ class DigestServer(ThreadingHTTPServer):
         self.token = secrets.token_urlsafe(24)
         self._lock = threading.Lock()
         super().__init__(address, _Handler)
+        # Opening the page is looking at it, so it moves the "last looked"
+        # marker just as `jobhunt digest` does. The previous value is kept for
+        # the life of the server: a reload should not strip the New badges
+        # off roles you have not got to yet.
+        with Store(self.db_path) as store:
+            self.since = store.meta_get("last_digest_at")
+            store.meta_set("last_digest_at", now_iso())
 
     def render(self) -> bytes:
         """Build the page fresh, so a reload reflects what has been marked."""
         with self._lock, Store(self.db_path) as store:
-            rows, subtitle, since = collect(store, show_all=self.show_all)
+            rows, subtitle, _ = collect(
+                store, show_all=self.show_all, last_digest=self.since
+            )
             html = render_digest(
-                rows, subtitle=subtitle, since=since, api_token=self.token
+                rows, subtitle=subtitle, since=self.since, api_token=self.token
             )
         return html.encode("utf-8")
 
@@ -91,7 +101,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": "not found"})
             return
 
-        if self.headers.get("X-Jobhunt-Token") != self.server.token:
+        offered = self.headers.get("X-Jobhunt-Token") or ""
+        if not secrets.compare_digest(offered.encode(), self.server.token.encode()):
             self._json(403, {"error": "bad or missing token"})
             return
 

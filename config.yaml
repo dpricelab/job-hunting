@@ -87,6 +87,7 @@ rules:
   - re:\bassistants?\b
   - re:\bcoordinators?\b
   - chief
+  - marketing
   location_include:
   - London
   - re:\boxford

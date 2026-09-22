@@ -75,6 +75,7 @@ rules:
   - re:\bcommissioning\b
   - re:\bcontent\b
   - re:\bportfolio\b
+  - re:\bpartnerships?\b
   title_exclude:
   - intern
   - internship
@@ -117,3 +118,4 @@ rules:
     manuscript: 1
     London: 2
   title_bonus: 2
+  title_bypass_score: 8

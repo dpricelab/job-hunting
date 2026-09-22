@@ -22,6 +22,9 @@ DEFAULT_RULES: dict = {
     "exclude_keywords": [],
     "keywords": {},
     "title_bonus": 2,  # keyword weights are multiplied by this when hit in the title
+    # A posting whose title matches no title_include term is still kept if it
+    # scores at least this on its body. 0 makes title_include a hard gate.
+    "title_bypass_score": 0,
 }
 
 
@@ -160,7 +163,7 @@ def _validate_rules(rules: dict) -> None:
             raise ConfigError(f"'rules.{key}' must be a list")
         rules[key] = [str(v) for v in value]
 
-    for key in ("min_score", "max_age_days", "title_bonus"):
+    for key in ("min_score", "max_age_days", "title_bonus", "title_bypass_score"):
         value = rules.get(key, 0)
         if not isinstance(value, (int, float)):
             raise ConfigError(f"'rules.{key}' must be a number")

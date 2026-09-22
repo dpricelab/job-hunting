@@ -142,6 +142,7 @@ rules:
     - php
 
   title_include: []       # if set, the title must match one of these
+  title_bypass_score: 0   # unless the body scores at least this (0 = hard gate)
   location_include: []    # matched against the posting's location field
   location_exclude:
     - "New York"
@@ -165,6 +166,17 @@ re-fetching a thing:
 ```bash
 jobhunt rescore
 ```
+
+### When a good title says nothing useful
+
+A title gate is blunt: a publisher advertising a "Partnerships Manager" whose
+work is publications and journal editors gets rejected before the body is ever
+read. `title_bypass_score` lets a posting earn its way in on body alone.
+
+Pick the threshold by looking at what it lets through, not by intuition. Every
+advert at a publisher mentions its own journals, so boilerplate alone scores a
+few points on any role in the building — set it too low and the gate stops
+meaning anything.
 
 ### Why didn't I see that job?
 

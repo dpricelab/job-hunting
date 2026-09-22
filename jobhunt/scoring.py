@@ -78,10 +78,6 @@ def score_job(job: Job, rules: dict) -> Verdict:
     if hit:
         return Verdict(rejected=f"excluded keyword {hit!r}")
 
-    title_include = rules.get("title_include") or []
-    if title_include and not _first_match(title_include, title):
-        return Verdict(rejected="title matched no title_include term")
-
     hit = _first_match(rules.get("location_exclude"), location)
     if hit:
         return Verdict(rejected=f"location excludes {hit!r}")
@@ -118,6 +114,20 @@ def score_job(job: Job, rules: dict) -> Verdict:
         else:
             matched.append(str(term))
         score += earned
+
+    # The title gate is applied after scoring rather than before, so a posting
+    # whose title says nothing recognisable can still earn its way in on the
+    # strength of what the body says. Set title_bypass_score to 0 to require
+    # the title to match, as a gate normally would.
+    title_include = rules.get("title_include") or []
+    if title_include and not _first_match(title_include, title):
+        bypass = rules.get("title_bypass_score", 0) or 0
+        if not bypass or score < bypass:
+            return Verdict(
+                score=score,
+                matched=matched,
+                rejected="title matched no title_include term",
+            )
 
     min_score = rules.get("min_score", 0) or 0
     if score < min_score:

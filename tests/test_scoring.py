@@ -26,6 +26,93 @@ def rules(**overrides) -> dict:
     return merged
 
 
+class TitleBypassTests(unittest.TestCase):
+    """A strong body can carry a title the gate does not recognise.
+
+    Publishers advertise roles whose titles say nothing about publishing —
+    "Partnerships Manager" at BMJ, working on publications with journal
+    editors — which a title gate rejects before ever reading the body.
+    """
+
+    BOILERPLATE = (
+        "We publish The BMJ, one of the world's most impactful medical journals "
+        "and over 70 influential speciality journals."
+    )
+
+    def rules(self, bypass):
+        return rules(
+            title_include=["editor", "publisher"],
+            keywords={"editorial": 3, "journals": 2, "content": 1},
+            title_bonus=2,
+            min_score=1,
+            title_bypass_score=bypass,
+        )
+
+    def score(self, title, description, bypass):
+        return score_job(
+            make_job(title=title, description=description, location=""),
+            self.rules(bypass),
+        )
+
+    def test_a_gate_miss_is_kept_when_the_body_scores_high_enough(self):
+        body = "Editorial collaboration with journals, content collections. " + self.BOILERPLATE
+        verdict = self.score("Partnerships Manager", body, bypass=6)
+        self.assertTrue(verdict.kept)
+        self.assertGreaterEqual(verdict.score, 6)
+
+    def test_the_same_posting_is_rejected_below_the_threshold(self):
+        body = "Editorial collaboration with journals, content collections. " + self.BOILERPLATE
+        verdict = self.score("Partnerships Manager", body, bypass=99)
+        self.assertFalse(verdict.kept)
+        self.assertIn("title_include", verdict.rejected)
+
+    def test_boilerplate_alone_does_not_get_a_posting_through(self):
+        # Every advert at a publisher mentions its journals; that must not be
+        # enough on its own, or the gate stops meaning anything.
+        verdict = self.score("Senior Sales Executive", self.BOILERPLATE, bypass=6)
+        self.assertFalse(verdict.kept)
+        self.assertIn("title_include", verdict.rejected)
+
+    def test_zero_keeps_the_gate_absolute(self):
+        body = "Editorial work on journals and content. " + self.BOILERPLATE
+        verdict = self.score("Partnerships Manager", body, bypass=0)
+        self.assertFalse(verdict.kept)
+
+    def test_a_rejected_bypass_still_reports_its_score(self):
+        # Seeing how close it came is what makes the threshold tunable.
+        body = "Editorial work on journals. " + self.BOILERPLATE
+        verdict = self.score("Partnerships Manager", body, bypass=99)
+        self.assertGreater(verdict.score, 0)
+        self.assertTrue(verdict.matched)
+
+    def test_a_title_match_still_wins_regardless_of_the_bypass(self):
+        # An impossible bypass threshold must not affect a title that matches.
+        verdict = self.score("Managing Editor", "Editorial oversight of journals.", bypass=99)
+        self.assertTrue(verdict.kept)
+
+    def test_hard_exclusions_are_not_bypassed(self):
+        # The bypass must not become a way around title_exclude.
+        merged = self.rules(bypass=1)
+        merged["title_exclude"] = ["intern"]
+        body = "Editorial work on journals and content. " + self.BOILERPLATE
+        verdict = score_job(
+            make_job(title="Editorial Intern", description=body, location=""), merged
+        )
+        self.assertFalse(verdict.kept)
+        self.assertIn("intern", verdict.rejected)
+
+    def test_location_still_applies_to_a_bypassed_posting(self):
+        merged = self.rules(bypass=1)
+        merged["location_include"] = ["London"]
+        body = "Editorial work on journals and content. " + self.BOILERPLATE
+        verdict = score_job(
+            make_job(title="Partnerships Manager", description=body, location="New York"),
+            merged,
+        )
+        self.assertFalse(verdict.kept)
+        self.assertIn("location", verdict.rejected)
+
+
 class ScoringTests(unittest.TestCase):
     def test_keyword_in_title_earns_the_bonus(self):
         verdict = score_job(

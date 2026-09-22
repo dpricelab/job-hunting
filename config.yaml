@@ -71,6 +71,10 @@ companies:
   url: https://cabi.ciphr-irecruit.com/templates/CIPHR/job_list.aspx
   source: generic
   token: https://cabi.ciphr-irecruit.com/templates/CIPHR/job_list.aspx
+- name: The Company of Biologists
+  url: https://www.biologists.com/about-us/work-for-us/
+  source: generic
+  token: https://www.biologists.com/about-us/work-for-us/
 rules:
   min_score: 5
   remote_only: false

@@ -63,6 +63,10 @@ companies:
   token: wk.wd3.myworkdayjobs.com/wk/External
   params:
     locationCountry: 29247e57dbaf46fb855b224e03170bc7
+- name: eLife
+  url: https://elifesciences.org/jobs
+  source: generic
+  token: https://elifesciences.org/jobs
 rules:
   min_score: 5
   remote_only: false

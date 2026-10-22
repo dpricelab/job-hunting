@@ -367,3 +367,7 @@ touching an external job board.
   Company boards carry the same roles, earlier and without the noise.
 - The generic fallback cannot see jobs that only exist after JavaScript runs.
   Use the underlying board URL when that happens.
+
+## Licence
+
+MIT — free to use, copy and adapt, with no warranty. See [LICENSE](LICENSE).

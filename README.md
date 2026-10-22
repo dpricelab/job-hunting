@@ -370,4 +370,8 @@ touching an external job board.
 
 ## Licence
 
-MIT — free to use, copy and adapt, with no warranty. See [LICENSE](LICENSE).
+[PolyForm Noncommercial 1.0.0](LICENSE). Free to use, copy and adapt for
+any non-commercial purpose: your own job search, study, or use by a charity,
+school, university or public body. Commercial use, such as a recruitment
+agency running it for clients or selling it as a service, needs permission
+from the copyright holder, Daniel Price. Comes as is, with no warranty.

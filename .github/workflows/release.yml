@@ -1,0 +1,132 @@
+# Builds the double-click download, installs it on a real Mac and a real
+# Windows machine to prove the installers work, and only then publishes it
+# as a GitHub Release.
+#
+# Run it from the Actions tab: "Build the download" -> Run workflow.
+# Leave "publish" unticked to test without releasing anything.
+
+name: Build the download
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish as a GitHub Release once the install tests pass"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the unit tests
+        run: |
+          pip install -q requests PyYAML
+          python -m unittest discover -s tests -t .
+      - id: build
+        name: Build the zip
+        run: |
+          sh scripts/build-release.sh
+          echo "version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: download
+          path: dist/*.zip
+
+  install-test:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      JOBHUNT_NO_PAUSE: "1"
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: download
+
+      - name: Unzip, install, check, then install again as an update (Mac)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -eux
+          unzip -q "jobhunt-$VERSION.zip"
+          cd "jobhunt-$VERSION"
+          # Run it the way a double-click does: as an executable, so a lost
+          # permission bit fails here rather than on someone's Mac.
+          "./Install (Mac).command"
+          home="$HOME/Documents/Job hunt"
+          test -x "$home/Open job board.command"
+          test -x "$home/Edit my settings.command"
+          py=$(cat "$home/.program")
+          "$py" -m jobhunt --config "$home/config.yaml" --data-dir "$home/data" companies
+          "$py" -m jobhunt --config "$home/config.yaml" --data-dir "$home/data" rescore
+          # An update must keep the user's own settings.
+          echo "# mine" >> "$home/config.yaml"
+          "./Install (Mac).command"
+          grep -q "# mine" "$home/config.yaml"
+          "$py" -m jobhunt --version
+
+      - name: Unzip, install, check, then install again as an update (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Expand-Archive "jobhunt-$env:VERSION.zip" -DestinationPath .
+          Set-Location "jobhunt-$env:VERSION"
+          cmd /c "`"Install (Windows).bat`""
+          if ($LASTEXITCODE -ne 0) { throw "installer failed: $LASTEXITCODE" }
+          $home_dir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) "Job hunt"
+          foreach ($f in "Open job board.bat", "Edit my settings.bat", "config.yaml", ".program") {
+            if (-not (Test-Path (Join-Path $home_dir $f))) { throw "missing $f" }
+          }
+          $py = (Get-Content (Join-Path $home_dir ".program") -TotalCount 1).Trim()
+          & $py -m jobhunt --config "$home_dir\config.yaml" --data-dir "$home_dir\data" companies
+          if ($LASTEXITCODE -ne 0) { throw "companies failed" }
+          & $py -m jobhunt --config "$home_dir\config.yaml" --data-dir "$home_dir\data" rescore
+          if ($LASTEXITCODE -ne 0) { throw "rescore failed" }
+          Add-Content (Join-Path $home_dir "config.yaml") "# mine"
+          cmd /c "`"Install (Windows).bat`""
+          if ($LASTEXITCODE -ne 0) { throw "update failed: $LASTEXITCODE" }
+          if (-not (Select-String -Path (Join-Path $home_dir "config.yaml") -Pattern "# mine" -Quiet)) {
+            throw "update overwrote the settings"
+          }
+          & $py -m jobhunt --version
+
+  publish:
+    needs: [build, install-test]
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: download
+      - name: Publish the release
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "jobhunt-$VERSION.zip" --clobber
+          else
+            gh release create "$tag" "jobhunt-$VERSION.zip" \
+              --target "$GITHUB_SHA" \
+              --title "Job hunt $VERSION" \
+              --notes-file installer/release-notes.md
+          fi

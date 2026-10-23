@@ -754,6 +754,18 @@ def cmd_digest(args) -> int:
     return 0
 
 
+def _is_jobhunt_running(url: str) -> bool:
+    """Whether the program already listening at `url` is another jobhunt."""
+    import urllib.request
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(url, timeout=2) as response:
+            return response.headers.get("Server", "").startswith("jobhunt")
+    except Exception:
+        return False
+
+
 def cmd_serve(args) -> int:
     """Serve the digest with working buttons.
 
@@ -766,8 +778,16 @@ def cmd_serve(args) -> int:
     try:
         server = serve(base / "jobs.db", port=args.port, show_all=args.all)
     except OSError as exc:
+        url = f"http://127.0.0.1:{args.port}/"
+        if _is_jobhunt_running(url):
+            # Double-clicking the launcher twice is easy to do. The board is
+            # already up, so show it rather than an error.
+            print(f"Your job board is already open at {green(url)}")
+            if not args.no_open:
+                webbrowser.open(url)
+            return 0
         print(red(f"Could not start on port {args.port}: {exc}"))
-        print(dim("Another copy may already be running. Try --port 8766."))
+        print(dim("Something else is using that port. Try --port 8766."))
         return 1
 
     url = f"http://127.0.0.1:{server.server_address[1]}/"

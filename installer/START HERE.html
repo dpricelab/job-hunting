@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Job hunt — start here</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#14181d;--muted:#5f6b7a;--border:#e3e6ea;--accent:#1f6feb;--note:#fff8e6;--noteb:#f0d58a}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1216;--card:#171b21;--text:#e6eaef;--muted:#94a1b2;--border:#272d36;--accent:#5b9bff;--note:#2a2414;--noteb:#6b5a22}}
+*{box-sizing:border-box}
+body{margin:0;padding:32px 16px 64px;background:var(--bg);color:var(--text);
+     font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-size:28px;margin:0 0 4px}
+h2{font-size:20px;margin:36px 0 10px}
+h3{font-size:17px;margin:20px 0 6px}
+.lead{color:var(--muted);margin:0 0 24px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin:12px 0}
+.tabs{display:flex;gap:8px;margin:20px 0 0}
+.tabs button{font:inherit;padding:8px 16px;border-radius:8px;border:1px solid var(--border);
+             background:var(--card);color:var(--text);cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.os{display:none}.os.show{display:block}
+ol{padding-left:22px}li{margin:6px 0}
+.note{background:var(--note);border:1px solid var(--noteb);border-radius:8px;padding:10px 14px;margin:12px 0}
+code,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;
+         background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:1px 5px}
+.muted{color:var(--muted)}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Job hunt</h1>
+<p class="lead">Checks the careers pages of the publishers you care about, keeps only the
+roles that fit your rules, and shows them on one page with closing dates and buttons to
+mark what you have applied for. It runs on your own computer; nothing is sent anywhere.</p>
+
+<p>Which computer are you using?</p>
+<div class="tabs">
+  <button type="button" data-os="mac" aria-pressed="true">Mac</button>
+  <button type="button" data-os="win" aria-pressed="false">Windows PC</button>
+</div>
+
+<!-- ============================ MAC ============================ -->
+<div class="os show" id="mac">
+
+<h2>1. Install Python (once)</h2>
+<div class="card"><ol>
+  <li>Go to <a href="https://www.python.org/downloads/">python.org/downloads</a> and click
+      the yellow <b>Download Python</b> button.</li>
+  <li>Open the downloaded file and click <b>Continue</b> through the installer, then
+      <b>Install</b>. It may ask for your Mac password.</li>
+</ol>
+<p class="muted">Already have Python 3.10 or newer? Skip this step.</p></div>
+
+<h2>2. Install Job hunt (once)</h2>
+<div class="card"><ol>
+  <li>In the folder you downloaded, double-click <b>Install (Mac)</b>.</li>
+  <li>The first time, your Mac will refuse with a message that it
+      <i>“could not verify”</i> the file. That is normal for anything downloaded that is
+      not from the App Store. Click <b>Done</b>, then:
+      <ul>
+        <li>open <b>System Settings → Privacy &amp; Security</b>,</li>
+        <li>scroll down to <i>“Install (Mac).command was blocked”</i> and click
+            <b>Open Anyway</b>, then <b>Open</b>.</li>
+      </ul>
+      <span class="muted">On older Macs: right-click <b>Install (Mac)</b>, choose <b>Open</b>,
+      then <b>Open</b> again.</span></li>
+  <li>A window with text opens and sets everything up. It takes about a minute and
+      finishes by opening a folder called <b>Job hunt</b> in your Documents.</li>
+</ol>
+<p>You only need to allow it once: the installer clears the warning for everything else.</p></div>
+
+<h2>3. Every day</h2>
+<div class="card"><ol>
+  <li>Open <b>Documents → Job hunt</b> and double-click <b>Open job board</b>.</li>
+  <li>It spends a minute or two checking every careers page, then opens your job board in
+      your web browser.</li>
+  <li>When you have finished, close the text window (click <b>Terminate</b> if asked).</li>
+</ol>
+<p class="muted">Tip: drag <b>Open job board</b> to your Dock, to the right of the
+dividing line, to open it from there.</p></div>
+</div>
+
+<!-- ========================== WINDOWS ========================== -->
+<div class="os" id="win">
+
+<h2>1. Install Python (once)</h2>
+<div class="card"><ol>
+  <li>Go to <a href="https://www.python.org/downloads/">python.org/downloads</a> and click
+      the yellow <b>Download Python</b> button.</li>
+  <li>Run the downloaded file. <b>On its first screen, tick “Add python.exe to PATH”</b>,
+      then click <b>Install Now</b>.</li>
+</ol>
+<p class="muted">Already have Python 3.10 or newer? Skip this step.</p></div>
+
+<h2>2. Install Job hunt (once)</h2>
+<div class="card"><ol>
+  <li>Right-click the downloaded zip file and choose <b>Extract All…</b>, then
+      <b>Extract</b>. (Double-clicking the zip only lets you look inside; the installer
+      will not work from there.)</li>
+  <li>In the extracted folder, double-click <b>Install (Windows)</b>.</li>
+  <li>If a blue box says <i>“Windows protected your PC”</i>, click <b>More info</b>, then
+      <b>Run anyway</b>. If a box asks whether to run the file, click <b>Run</b>.</li>
+  <li>A black window sets everything up. It takes about a minute and finishes by opening a
+      folder called <b>Job hunt</b> in your Documents. Press any key to close the black
+      window.</li>
+</ol></div>
+
+<h2>3. Every day</h2>
+<div class="card"><ol>
+  <li>Open <b>Documents → Job hunt</b> and double-click <b>Open job board</b>.</li>
+  <li>It spends a minute or two checking every careers page, then opens your job board in
+      your web browser.</li>
+  <li>When you have finished, close the black window.</li>
+</ol>
+<p class="muted">Tip: right-click <b>Open job board</b> → <b>Send to → Desktop (create
+shortcut)</b> to open it from your desktop.</p></div>
+</div>
+
+<!-- ========================== BOTH ============================= -->
+<h2>Using the job board</h2>
+<div class="card"><ul>
+  <li>Each card is an open role. Click its title to read the advert.</li>
+  <li><b>Applied</b> and <b>Not for me</b> take a role off your list.
+      <b>Undo</b> puts it back. Nothing else to save.</li>
+  <li><b>New</b> marks roles that appeared since you last looked. A red label means it
+      closes within a week.</li>
+  <li>The box at the top filters by any word: a company, a place, a job title.</li>
+</ul></div>
+
+<h2>Changing what it looks for</h2>
+<div class="card">
+<p>Double-click <b>Edit my settings</b> in your Job hunt folder. The settings open in a
+text editor; change them, save, and it checks them for you. The parts worth changing:</p>
+<ul>
+  <li><code>title_include</code> — a role is only shown if its title contains one of these
+      words. Add your own on a new line, for example <code>- marketing</code>.</li>
+  <li><code>title_exclude</code> — roles whose titles contain these are never shown.</li>
+  <li><code>location_include</code> — the places you would work. Add a town on a new line,
+      for example <code>- Bristol</code>.</li>
+  <li><code>companies</code> — the careers pages checked. To stop checking one, add a line
+      <code>enabled: false</code> under it, lined up with the lines above.</li>
+</ul>
+<div class="note">The settings file is fussy about layout. Keep each new line starting with
+the same spaces and <code>- </code> as the lines around it, and do not use tabs. Lines
+beginning <code>re:</code> are patterns; plain words work fine on their own. If you get
+stuck, the checker says which line it could not read.</div>
+</div>
+
+<h2>Updating to a newer version</h2>
+<div class="card"><p>Download the new version, unzip it and double-click <b>Install</b>
+again. Your settings and everything you have marked are kept.</p></div>
+
+<h2>Something not working?</h2>
+<div class="card"><ul>
+  <li><b>“Python 3.10 or newer is needed”</b> — do step 1, then run Install again. On
+      Windows, if you already installed Python, run its installer again, choose
+      <b>Modify</b> and make sure <i>“Add Python to environment variables”</i> is ticked.</li>
+  <li><b>“The install did not finish”</b> — it needs the internet to fetch two small
+      parts. Check you are online and try again.</li>
+  <li><b>A company shows a ✗ when checking</b> — that site was unreachable just then. The
+      rest still work, and the next check usually succeeds.</li>
+  <li><b>The board does not open</b> — type <code>http://127.0.0.1:8765</code> into your
+      browser while the text window is open.</li>
+</ul></div>
+
+<h2>Removing it</h2>
+<div class="card"><p>Delete the <b>Job hunt</b> folder in Documents. The program itself is
+in <span class="muted">~/Library/Application Support/jobhunt</span> on a Mac and
+<span class="muted">%LOCALAPPDATA%\jobhunt</span> on Windows, and can be deleted too.</p></div>
+
+<p class="muted">Free for personal, non-commercial use under the PolyForm Noncommercial
+licence. Copyright © 2026 Daniel Price.</p>
+</div>
+
+<script>
+(function(){
+  var buttons = document.querySelectorAll('.tabs button');
+  function show(os){
+    buttons.forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.os === os)); });
+    document.querySelectorAll('.os').forEach(function(el){ el.classList.toggle('show', el.id === os); });
+  }
+  buttons.forEach(function(b){ b.addEventListener('click', function(){ show(b.dataset.os); }); });
+  if (/Windows/i.test(navigator.userAgent)) show('win');
+})();
+</script>
+</body>
+</html>

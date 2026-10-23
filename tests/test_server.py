@@ -200,6 +200,37 @@ class ServerTests(unittest.TestCase):
         finally:
             again.server_close()
 
+    def test_starting_twice_points_at_the_board_already_running(self):
+        # Double-clicking the launcher twice must not end in an error.
+        import io
+        from contextlib import redirect_stdout
+
+        from jobhunt.cli import main
+
+        port = str(self.server.server_address[1])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = main(["--data-dir", str(self.db.parent), "serve", "--port", port, "--no-open"])
+        self.assertEqual(code, 0)
+        self.assertIn("already open", out.getvalue())
+
+    def test_a_port_held_by_something_else_is_still_an_error(self):
+        import io
+        import socket
+        from contextlib import redirect_stdout
+
+        from jobhunt.cli import main
+
+        with socket.socket() as other:
+            other.bind(("127.0.0.1", 0))
+            other.listen(1)
+            port = str(other.getsockname()[1])
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = main(["--data-dir", str(self.db.parent), "serve", "--port", port, "--no-open"])
+        self.assertEqual(code, 1)
+        self.assertIn("Something else", out.getvalue())
+
     def test_each_run_mints_a_fresh_token(self):
         other = serve(self.db, port=0)
         try:

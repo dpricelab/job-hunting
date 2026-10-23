@@ -12,3 +12,7 @@ __pycache__/
 venv/
 *.egg-info/
 .pytest_cache/
+
+# build-release.sh output
+dist/
+build/

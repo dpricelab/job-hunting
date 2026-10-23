@@ -112,6 +112,55 @@ Google Jobs, then a link-shaped guess. The fallback is best-effort and says so
 that happens, look for the "view all jobs" link on the page, which usually
 points at the real board, and add that URL instead.
 
+## The configuration included
+
+The `config.yaml` in this repository is a working setup for **editorial,
+publishing and content roles in UK academic and scholarly publishing**, based
+in London, Oxfordshire or Cambridge, or remote from the UK. Use it as it is if
+that is your search too, or as a starting point to edit.
+
+### Sources (18, of which 16 are checked)
+
+| Kind | Sources |
+|---|---|
+| Publishers | Elsevier, Springer Nature, Wiley, Taylor & Francis (Informa), Sage, PLOS, BMJ, Wolters Kluwer (UK roles only), Royal Society of Chemistry, eLife, CABI, The Company of Biologists |
+| Job boards | ALPSP careers hub, CharityJob (editorial section) |
+| Recruitment agencies | Redwood Recruitment, Morgan Healey |
+| Switched off | Oxford University Press, Cambridge University Press — both sites refuse automated readers, so check them by hand |
+
+### Rules
+
+**The title must contain one of:** publisher / publishing, editor / editorial,
+journal, peer review, commissioning, content, portfolio, partnership.
+
+**Titles are rejected outright if they contain:** intern, internship,
+graduate, apprentice, placement, video, copy desk, assistant, coordinator,
+chief, marketing.
+
+**Locations kept:** London, Oxford, Abingdon, Wallingford, Cambridge, and
+remote roles open to the UK or Europe (including a bare "Remote"). A posting
+that states no location is kept rather than guessed at.
+
+**Locations rejected:** anything in the United States, and US-style
+"City, ST" locations such as "Cambridge, MA" — while "London, UK" and
+"Remote, EU" pass.
+
+**Scoring.** Each keyword found earns points, doubled when it appears in the
+title. A role needs **5 points** to reach the digest.
+
+| Points | Keywords |
+|---|---|
+| 6 | publisher; journal(s) manager / journals publishing manager |
+| 5 | managing, commissioning, senior, acquisitions or publishing editor; peer review manager; head of content; portfolio manager / director / lead / head |
+| 4 | content director / lead / manager / strategist |
+| 3 | editor, editorial |
+| 2 | peer review, open access, scholarly, journal(s), London |
+| 1 | content, portfolio, manuscript |
+
+So "Managing Editor" in the title scores at least 16, while a role that only
+mentions journals in its body scores 2 and is left out. There is no age limit
+on postings, and no requirement for roles to be remote.
+
 ## Configuring what counts as a match
 
 Everything lives in `config.yaml`. Scoring is deterministic: no API keys, no

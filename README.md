@@ -23,6 +23,20 @@ $ jobhunt digest --open
 Wrote out/digest.html — 3 roles · new since 09 Aug 2026
 ```
 
+## Download (no coding needed)
+
+For Mac or Windows, without git or a terminal: open the
+[latest release](https://github.com/dpricelab/job-hunting/releases/latest),
+download the zip under *Assets*, unzip it and open **START HERE**. It walks
+through installing Python once, then double-clicking **Install** and
+**Open job board**. Settings and marked roles are kept in `Documents/Job hunt`,
+so installing a newer download later keeps them.
+
+To publish a new download after changing the code, bump `version` in
+`pyproject.toml` and `jobhunt/__init__.py`, then run **Build the download**
+from the repository's Actions tab. It installs the zip on a Mac and a Windows
+machine first, and only publishes if both succeed.
+
 ## Install
 
 ```bash
